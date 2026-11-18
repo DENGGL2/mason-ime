@@ -47,6 +47,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\_files\scripts\build_n
 
 `project-info.json` 的 `github_url` 指向本仓库。“检查更新”请求 `https://api.github.com/repos/DENGGL2/mason-ime/releases/latest`，比较正式 Release 的 `v主版本.次版本.修订版本` 标签。
 
+匿名 API 额度耗尽时，后端读取同一仓库 `/releases/latest` 的官方稳定版跳转地址作为备用检查，不需要访问令牌。
+
 未发布到 Release 的源码修改不会被版本检查识别。发布新版时，应同时更新项目版本、程序版本信息和运行清单，并发布相应正式标签及安装包。
 
 含中文的 PowerShell 脚本使用带 BOM 的 UTF-8 编码，以兼容 Windows PowerShell 5.1。上游组件的原始许可与来源说明保留于相应目录及 `THIRD_PARTY_NOTICES.md`。

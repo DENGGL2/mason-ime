@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -11,8 +11,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("麻绳输入法 · 设置入口")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.4.0")]
-[assembly: AssemblyFileVersion("2.4.4.0")]
+[assembly: AssemblyVersion("2.4.5.0")]
+[assembly: AssemblyFileVersion("2.4.5.0")]
 
 namespace Mason.Entry {
   public static class Program {

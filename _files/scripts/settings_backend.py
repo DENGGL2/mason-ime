@@ -7,6 +7,7 @@ import shutil
 import sys
 import winreg
 import urllib.request
+import urllib.parse
 import urllib.error
 import mason_paths
 import settings_core as core
@@ -83,11 +84,23 @@ def check_application_update():
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return 'GitHub 尚未发布可用版本。'
-        raise RuntimeError('检查更新未完成：HTTP ' + str(error.code)) from error
-    if len(raw) > 2 * 1024 * 1024:
-        raise RuntimeError('更新信息过大。')
-    release = json.loads(raw.decode('utf-8'))
-    latest = str(release.get('tag_name','')).removeprefix('v')
+        if error.code in (403, 429) and error.headers.get('X-RateLimit-Remaining') == '0':
+            # The public latest-release redirect selects stable releases without API quota.
+            fallback = urllib.request.Request(address.rstrip('/') + '/releases/latest',
+                headers={'User-Agent': 'Mason/' + str(info['version'])}, method='HEAD')
+            with urllib.request.urlopen(fallback, timeout=15) as response:
+                destination = urllib.parse.urlsplit(response.geturl())
+            prefix = '/' + match[1] + '/' + match[2] + '/releases/tag/'
+            if destination.scheme != 'https' or destination.netloc.lower() != 'github.com' or not destination.path.startswith(prefix):
+                raise RuntimeError('更新下载地址格式无效。')
+            latest = urllib.parse.unquote(destination.path[len(prefix):]).removeprefix('v')
+        else:
+            raise RuntimeError('检查更新未完成：HTTP ' + str(error.code)) from error
+    else:
+        if len(raw) > 2 * 1024 * 1024:
+            raise RuntimeError('更新信息过大。')
+        release = json.loads(raw.decode('utf-8'))
+        latest = str(release.get('tag_name','')).removeprefix('v')
     def version(value):
         if not core.re.fullmatch(r'\d+\.\d+\.\d+(?:\.\d+)?', value):
             raise RuntimeError('更新版本信息格式无效。')

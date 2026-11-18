@@ -15,17 +15,17 @@
 
 ## 安装
 
-1. 从 [Releases](https://github.com/DENGGL2/mason-ime/releases/latest) 下载 `Mason-2.4.4-Windows.zip`，完整解压。
+1. 从 [Releases](https://github.com/DENGGL2/mason-ime/releases/latest) 下载 `Mason-2.4.5-Windows.zip`，完整解压。
 2. 运行文件夹内的 `Mason.Install.exe`，选择安装地址并开始安装。已有 Mason 会沿用原路径进行覆盖更新。
 3. 用 `Win + 空格` 切换输入法，从系统输入法右键菜单打开设置。
 
 使用环境：**Windows 10 / 11、.NET Framework 4.8、Python 3.10 或更新版本**。设置后端使用 Python 标准库；运行包不内置 Python。引擎优先从包内安装，缺失时再联网下载。
 
-“检查更新”会提示当前版本是否为最新，并在发现新版时提供下载页；程序升级通过下载新版安装包完成。云候选和在线更新需要联网。
+“检查更新”会提示当前版本是否为最新，并在发现新版时提供下载页；GitHub 匿名 API 额度用完时，自动读取官方最新发布页继续检查。程序升级通过下载新版安装包完成。云候选和在线更新需要联网。
 
 ## 最新设置界面
 
-以下为 Mason **2.4.4** 实际 WPF 界面的浅色 / 深色截图，完整展示外观、输入和指南页面。
+以下为 Mason **2.4.5** 实际 WPF 界面的浅色 / 深色截图，完整展示外观、输入和指南页面。
 
 | 页面 | 浅色 | 深色 |
 | --- | --- | --- |
