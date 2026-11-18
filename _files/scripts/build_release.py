@@ -19,6 +19,10 @@ if stage.exists():
 version = json.loads((development / "_files/ui/project-info.json").read_text(encoding="utf-8-sig"))["version"]
 if not args.no_build:
     powershell = Path(os.environ["WINDIR"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                    "-File", str(development / "_files/scripts/build_native_text.ps1"),
+                    "-PackageDir", str(development), "-BuildDir", str(development / "build/native-text")],
+                   creationflags=subprocess.CREATE_NO_WINDOW, check=True)
     for script in ("build_settings.ps1", "build_installer.ps1"):
         subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                         "-File", str(development / "_files/scripts" / script)],
@@ -30,7 +34,7 @@ ui_names = {
     "Mason.NativeTools.dll", "Mason.ico", "default-appearance.yaml", "project-info.json"
 }
 script_names = {
-    "settings_backend.py", "settings_core.py", "mason_paths.py", "fuzzy_settings.py", "dictionary_updater.py",
+    "settings_backend.py", "settings_core.py", "mason_paths.py", "fuzzy_settings.py", "correction_settings.py", "dictionary_updater.py",
     "_migrate_layout.ps1", "_settings_entry.ps1", "_menu_protocol.ps1", "_apply_ui.ps1", "_tray_menu.ps1",
     "_native_ui.ps1", "_brand_windows.ps1", "_refresh_taskbar.ps1"
 }
@@ -51,7 +55,7 @@ def include(relative):
     if parts[1] == "cloud":
         return relative.name != "README.md"
     if parts[1] == "native":
-        return parts[2] in {"x64", "x86"} and relative.name == "Mason.Menu.dll"
+        return parts[2] in {"x64", "x86"} and relative.name in {"Mason.Menu.dll", "Mason.dll"}
     if parts[1] == "scripts":
         return len(parts) == 3 and relative.name in script_names
     if parts[1] == "ui":

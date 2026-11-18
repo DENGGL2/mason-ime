@@ -22,7 +22,7 @@ $taskFramework=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 if(-not(Test-Path -LiteralPath (Join-Path $taskFramework 'csc.exe'))){$taskFramework=Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319'}
 $taskArgs=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $PackageDir 'Mason.Install.exe')),('/win32manifest:'+(Join-Path $taskUi 'Mason.Install.manifest')),'/r:System.dll','/r:System.Core.dll','/r:System.Xaml.dll','/r:System.Web.Extensions.dll','/r:System.Windows.Forms.dll','/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll')
 foreach($taskName in @('PresentationFramework.dll','PresentationCore.dll','WindowsBase.dll')){$taskArgs+='/r:'+(Join-Path $taskFramework ('WPF\'+$taskName))}
-$taskArgs+=@((Join-Path $taskUi 'MasonInstall.cs'),(Join-Path $taskUi 'MasonInstallCore.cs'),(Join-Path $taskUi 'MasonNativeUi.cs'),(Join-Path $taskUi 'MasonPaths.cs'))
+$taskArgs+=@((Join-Path $taskUi 'MasonInstall.cs'),(Join-Path $taskUi 'MasonInstallCore.cs'),(Join-Path $taskUi 'MasonNativeUi.cs'),(Join-Path $taskUi 'MasonNativeText.cs'),(Join-Path $taskUi 'MasonPaths.cs'))
 $taskArgs+='/win32icon:'+(Join-Path $taskUi 'Mason.ico')
 & (Join-Path $taskFramework 'csc.exe') @taskArgs
 if($LASTEXITCODE -ne 0){throw '安装小窗编译失败。'}
@@ -35,13 +35,13 @@ foreach($taskBuild in @(@{Source='MasonDeployer.cs';Output='Mason.Deployer.exe';
     if($LASTEXITCODE -ne 0){throw ('入口编译失败：'+$taskBuild.Output)}
 }
 
-$taskCompatibility=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $taskUi 'Mason.Compatibility.exe')),'/r:System.dll','/r:System.Core.dll','/r:System.Xml.dll','/r:System.Web.Extensions.dll',(Join-Path $taskUi 'MasonNativeUi.cs'),(Join-Path $taskUi 'MasonNativeCompatibility.cs'))
+$taskCompatibility=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $taskUi 'Mason.Compatibility.exe')),'/r:System.dll','/r:System.Core.dll','/r:System.Xml.dll','/r:System.Web.Extensions.dll',(Join-Path $taskUi 'MasonNativeUi.cs'),(Join-Path $taskUi 'MasonNativeText.cs'),(Join-Path $taskUi 'MasonNativeCompatibility.cs'))
 & (Join-Path $taskFramework 'csc.exe') @taskCompatibility
 if($LASTEXITCODE -ne 0){throw '中文目录兼容性工具编译失败。'}
 
 $taskTray=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $taskUi 'Mason.Tray.exe')),('/win32manifest:'+(Join-Path $taskUi 'Mason.Tray.manifest')),'/r:System.dll','/r:System.Core.dll','/r:System.Drawing.dll','/r:System.Windows.Forms.dll','/r:System.Web.Extensions.dll',(Join-Path $taskUi 'MasonTray.cs'),(Join-Path $taskUi 'MasonModes.cs'),(Join-Path $taskUi 'MasonPaths.cs'),('/win32icon:'+(Join-Path $taskUi 'Mason.ico')))
 & (Join-Path $taskFramework 'csc.exe') @taskTray
 if($LASTEXITCODE -ne 0){throw '托盘界面编译失败。'}
-$taskInput=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $taskUi 'Mason.InputSetup.exe')),'/r:System.dll','/r:System.Core.dll','/r:System.Web.Extensions.dll',(Join-Path $taskUi 'MasonInputSetup.cs'),(Join-Path $taskUi 'MasonPaths.cs'),('/win32icon:'+(Join-Path $taskUi 'Mason.ico')))
+$taskInput=@('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:'+(Join-Path $taskUi 'Mason.InputSetup.exe')),'/r:System.dll','/r:System.Core.dll','/r:System.Web.Extensions.dll',(Join-Path $taskUi 'MasonInputSetup.cs'),(Join-Path $taskUi 'MasonNativeText.cs'),(Join-Path $taskUi 'MasonPaths.cs'),('/win32icon:'+(Join-Path $taskUi 'Mason.ico')))
 & (Join-Path $taskFramework 'csc.exe') @taskInput
 if($LASTEXITCODE -ne 0){throw '输入界面配置工具编译失败。'}

@@ -32,6 +32,7 @@ def validate(cfg):
     value['fontsize'] = max(11, min(24, int(value['fontsize'])))
     value['horizontal'] = bool(value['horizontal'])
     core.fuzzy_settings.validate(value)
+    core.correction_settings.validate(value)
     core.fuzzy_settings.validate(value)
     for key in ('custom_bg','custom_fg','custom_hl'):
         if not core.re.fullmatch(r'#[0-9a-fA-F]{6}',value[key]):

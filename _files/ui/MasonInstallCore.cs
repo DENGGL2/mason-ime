@@ -56,7 +56,7 @@ namespace Mason.Install {
     bool LayoutReady(InstallPlan plan);
   }
   public static class InstallFiles {
-    public const string ProductVersion="2.4.5";
+    public const string ProductVersion="2.4.6";
     public const string EngineHash="cf509534a8f5f8af9c98ed7cbb8f135439f145a8cbe7e50ede42bb5b5ab45c29";
     public const string EngineUrl="https://github.com/rime/weasel/releases/download/0.17.4/weasel-0.17.4.0-installer.exe";
     public const string ReleaseApi="https://api.github.com/repos/gaboolic/rime-frost/releases/latest";
@@ -389,7 +389,7 @@ namespace Mason.Install {
       foreach(var preference in setupPreferences){string target=InstallFiles.Child(plan.UserDir,preference.Key);if(!File.Exists(target) || InstallFiles.Hash(target)!=InstallFiles.Hash(preference.Value))CopyAtomic(preference.Value,target,null);}
       var items=Items();if(plan.InstallCloud)try{items.AddRange(CloudItems());}catch{};
       foreach(string name in new[]{"default.custom.yaml","rime_frost.custom.yaml","weasel.custom.yaml","user.yaml",".rime-mini-update.json"})items.Add(new CopyItem {Target=InstallFiles.Child(plan.UserDir,name),Group="词库",Relative=name});
-      foreach(string name in new[]{"WeaselServer.exe","Mason.Deployer.exe","mason-settings.json","weasel.dll","weaselx64.dll","weasel.ime","weaselx64.ime"})items.Add(new CopyItem {Target=InstallFiles.Child(plan.EngineDir,name),Group="引擎",Relative=name});
+      foreach(string name in new[]{"WeaselServer.exe","Mason.dll","Mason64.dll","Mason32.dll","Mason.Deployer.exe","mason-settings.json","weasel.dll","weaselx64.dll","weasel.ime","weaselx64.ime"})items.Add(new CopyItem {Target=InstallFiles.Child(plan.EngineDir,name),Group="引擎",Relative=name});
       items.Add(new CopyItem {Target=InstallFiles.Child(plan.AppDir,"mason-install.json"),Group="程序",Relative="mason-install.json"});
       long total=items.Where(x=>File.Exists(x.Target)).Sum(x=>new FileInfo(x.Target).Length),done=0;var records=new List<object>();
       foreach(var item in items){if(!File.Exists(item.Target) || !backups.Add(item.Target))continue;long bytes=new FileInfo(item.Target).Length;string target=InstallFiles.Child(backupDir,item.Group+"/"+item.Relative);CopyAtomic(item.Target,target,delegate(long delta){done+=delta;Emit("正在备份","保存现有文件",total>0?100.0*done/total:100,done,total,0,false);});if(InstallFiles.Hash(item.Target)!=InstallFiles.Hash(target))throw new IOException("备份文件校验失败，尚未覆盖原文件。");records.Add(new{original=item.Target,backup=target,sha256=InstallFiles.Hash(target)});}

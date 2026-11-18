@@ -34,8 +34,8 @@ using Mason.Common;
 [assembly: AssemblyTitle("麻绳输入法 · 设置")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法设置")]
-[assembly: AssemblyVersion("2.4.5.0")]
-[assembly: AssemblyFileVersion("2.4.5.0")]
+[assembly: AssemblyVersion("2.4.6.0")]
+[assembly: AssemblyFileVersion("2.4.6.0")]
 
 namespace Mason {
   // Data checked against FlClash v0.9.3 and its pinned prism_ui dependency.
@@ -170,11 +170,11 @@ namespace Mason {
     private SettingsWindow owner;
     public static readonly DependencyProperty PositionProperty=DependencyProperty.Register("Position",typeof(double),typeof(SettingsSwitch),new FrameworkPropertyMetadata(0.0,FrameworkPropertyMetadataOptions.AffectsRender));
     public double Position {get{return (double)GetValue(PositionProperty);}set{SetValue(PositionProperty,value);}}
-    public SettingsSwitch(SettingsWindow window,bool selected){
+    public SettingsSwitch(SettingsWindow window,bool selected,string label="模糊音"){
       owner=window;Width=InteractionWidth;Height=InteractionHeight;IsThreeState=false;IsChecked=selected;
       Position=selected?1:0;OverridesDefaultStyle=true;Template=null;FocusVisualStyle=null;
       Cursor=Cursors.Hand;Focusable=true;SnapsToDevicePixels=false;RenderOptions.SetEdgeMode(this,EdgeMode.Unspecified);
-      AutomationProperties.SetName(this,"模糊音");
+      AutomationProperties.SetName(this,label);
     }
     protected override void OnChecked(RoutedEventArgs e){base.OnChecked(e);UpdatePosition(true);}
     protected override void OnUnchecked(RoutedEventArgs e){base.OnUnchecked(e);UpdatePosition(false);}
@@ -327,7 +327,7 @@ namespace Mason {
     private List<SettingsButton> modes=new List<SettingsButton>();
     private Canvas preview;
     private string appDir="",programDir="",logDir="",backupDir="";
-    private SettingsSwitch fuzzySwitch;
+    private SettingsSwitch fuzzySwitch,correctionSwitch;
     private string page="appearance",rimeDir="",weaselDir="",updateStatus="尚未检查词库更新";
     private string statusText="正在读取设置…";
     private bool ready=false;
@@ -447,7 +447,7 @@ namespace Mason {
       fadeBottom.Opacity=1;
     }
     private void BuildPage() {
-      list.Children.Clear();PruneButtons();preview=null;updateLabel=null;updateButton=null;fuzzySwitch=null;modes.Clear();
+      list.Children.Clear();PruneButtons();preview=null;updateLabel=null;updateButton=null;fuzzySwitch=null;correctionSwitch=null;modes.Clear();
       title.Text=page=="appearance"?"外观":page=="maintenance"?"输入":"使用指南";
       footerRegion.Visibility=page=="guide"?Visibility.Collapsed:Visibility.Visible;
       scroll.Resources["RimeScrollTrackMargin"]=new Thickness(0,TitleAreaHeight+4,0,page=="guide"?4:ActionAreaHeight+4);
@@ -562,8 +562,26 @@ namespace Mason {
         }
       }
     }
+    private void BuildCorrection(){
+      var heading=new DockPanel {Margin=new Thickness(0,0,0,8)};
+      var title=Text("纠正输入错误",20,"text");title.FontWeight=FontWeights.Bold;
+      correctionSwitch=new SettingsSwitch(this,Fuzzy("correction_enabled"),"纠正输入错误");
+      DockPanel.SetDock(correctionSwitch,Dock.Right);heading.Children.Add(correctionSwitch);heading.Children.Add(title);list.Children.Add(heading);
+      var description=Text("自动纠正可能输入错误的拼音字母并生成正确的中文待选",14,"muted");
+      var content=new StackPanel();content.Children.Add(description);
+      var example=Text("",16,"text");example.Margin=new Thickness(0,12,0,0);example.Opacity=Fuzzy("correction_enabled")?1:.55;
+      example.Inlines.Add(new System.Windows.Documents.Run("ni ga"));
+      example.Inlines.Add(new System.Windows.Documents.Run("p") {Foreground=new SolidColorBrush(Parse(IsDark?"#F07E86":"#D94B54"))});
+      example.Inlines.Add(new System.Windows.Documents.Run(" su wo"));
+      example.Inlines.Add(new System.Windows.Documents.Run("  →  ") {Foreground=BrushOf("muted")});
+      example.Inlines.Add(new System.Windows.Documents.Run("你告诉我"));content.Children.Add(example);
+      AutomationProperties.SetName(example,"纠错示例：nigapsuwo，字母 p 标红，中文候选为你告诉我");
+      list.Children.Add(new Border {Background=BrushOf("surface"),BorderBrush=BrushOf("line"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(20),Padding=new Thickness(18),Margin=new Thickness(0,0,0,16),Child=content});
+      RoutedEventHandler changed=delegate{if(Busy)return;cfg["correction_enabled"]=correctionSwitch.IsChecked==true;example.Opacity=correctionSwitch.IsChecked==true?1:.55;Changed();};
+      correctionSwitch.Checked+=changed;correctionSwitch.Unchecked+=changed;
+    }
     private void BuildMaintenance(){
-      BuildFuzzy();
+      BuildFuzzy();BuildCorrection();
       Section("词库",6);
       var location=Card("词库");var content=(StackPanel)location.Child;content.Children.Clear();
       updateLabel=Text(updateStatus,14,"muted");updateLabel.Margin=new Thickness(0,0,0,14);content.Children.Add(updateLabel);
@@ -618,7 +636,7 @@ namespace Mason {
     private void Theme(string value){if(Busy || ThemeMode==value)return;cfg["ui_theme"]=value;systemDark=ReadSystemDark();foreach(string name in palettes)if(Convert.ToString(cfg["scheme"]).StartsWith("mini_"+name+"_")){cfg["scheme"]="mini_"+name+"_"+(IsDark?"dark":"light");break;}ApplyTheme(true);double offset=scroll.VerticalOffset;Changed();BuildPage();Dispatcher.BeginInvoke(new Action(delegate{scroll.ScrollToVerticalOffset(offset);}));}
     private void ApplyTheme(bool animate){foreach(var pair in brushes)if(animate)Motion.Color(pair.Value,ColorOf(pair.Key),Motion.ThemeMs,null);else pair.Value.Color=ColorOf(pair.Key);UpdateScrollColors();if(systemButton!=null)systemButton.Selected=ThemeMode=="system";if(lightButton!=null)lightButton.Selected=ThemeMode=="light";if(darkButton!=null)darkButton.Selected=ThemeMode=="dark";foreach(var button in Buttons)button.ApplyColors(animate,Motion.ThemeMs,null);SetNativeTheme();}
     private void Changed(){SetStatus("");}
-    private void Reset(){if(Busy)return;if(page=="maintenance"){cfg["fuzzy_enabled"]=false;foreach(var option in FuzzyOptions)cfg["fuzzy_"+option[0]]=false;}else{cfg["scheme"]="mini_graphite_"+(IsDark?"dark":"light");cfg["radius"]=10;cfg["fontsize"]=14;cfg["horizontal"]=false;}Changed();BuildPage();scroll.ScrollToTop();}
+    private void Reset(){if(Busy)return;if(page=="maintenance"){cfg["fuzzy_enabled"]=false;cfg["correction_enabled"]=true;foreach(var option in FuzzyOptions)cfg["fuzzy_"+option[0]]=false;}else{cfg["scheme"]="mini_graphite_"+(IsDark?"dark":"light");cfg["radius"]=10;cfg["fontsize"]=14;cfg["horizontal"]=false;}Changed();BuildPage();scroll.ScrollToTop();}
     private void SetStatus(string message){statusText=message;status.Text=message;}
     private async Task Initialize(){
       string failure=null;
@@ -636,14 +654,14 @@ namespace Mason {
     private async Task UpdateDictionary(){if(!await RequireInstalled())return;await RunJob("update",null,"正在检查最新词库…",true);}
     private async Task<bool> RunJob(string action,object payload,string pending,bool notify){
       if(Busy)return false;if(!Installed()){await Info("提示","请先安装麻绳输入法。");return false;}
-      Busy=true;SetStatus(pending);saveButton.IsEnabled=false;resetButton.IsEnabled=false;if(updateButton!=null)updateButton.IsEnabled=false;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=false;
+      Busy=true;SetStatus(pending);saveButton.IsEnabled=false;resetButton.IsEnabled=false;if(updateButton!=null)updateButton.IsEnabled=false;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=false;if(correctionSwitch!=null)correctionSwitch.IsEnabled=false;
       bool ok=false;string message=null;
       try{var result=await backend.Run(action,payload,delegate(string progressMessage){Dispatcher.BeginInvoke(new Action(delegate{SetStatus(progressMessage);if(updateLabel!=null)updateLabel.Text=progressMessage;}));});
         ok=Convert.ToBoolean(result["ok"]);message=Convert.ToString(result["message"]);Busy=false;
         if(ok && result.ContainsKey("data"))LoadData((Dictionary<string,object>)result["data"],false);
         SetStatus(message.Replace("\n"," · "));
       }catch(Exception error){Busy=false;SetStatus("操作未完成");message=error.Message;}
-      finally{Busy=false;saveButton.IsEnabled=true;resetButton.IsEnabled=true;if(updateButton!=null)updateButton.IsEnabled=true;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=true;}
+      finally{Busy=false;saveButton.IsEnabled=true;resetButton.IsEnabled=true;if(updateButton!=null)updateButton.IsEnabled=true;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=true;if(correctionSwitch!=null)correctionSwitch.IsEnabled=true;}
       if(action=="update" && !ok && updateLabel!=null)updateLabel.Text=message;
       if(!ok || notify)await Info(action=="update"?"词库更新":"提示",message);
       return ok;

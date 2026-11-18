@@ -15,6 +15,7 @@ import time
 import uuid
 import winreg
 import fuzzy_settings
+import correction_settings
 import mason_paths
 
 APP_TITLE = "麻绳输入法 · 设置"
@@ -58,7 +59,7 @@ DEFAULT_CONFIG = dict(scheme="mini_graphite_light", ui_theme="system", radius=10
                       fontsize=14, horizontal=False, custom_bg="#FFFFFF",
                       custom_fg="#1C2434", custom_hl="#2563EB")
 DEFAULT_CONFIG.update(fuzzy_settings.DEFAULTS)
-DEFAULT_CONFIG.update(fuzzy_settings.DEFAULTS)
+DEFAULT_CONFIG.update(correction_settings.DEFAULTS)
 
 
 def get_rime_dir():
@@ -132,7 +133,9 @@ def load_config(rime_dir):
     cfg = copy.deepcopy(DEFAULT_CONFIG)
     fuzzy_path = Path(rime_dir) / "rime_frost.custom.yaml"
     if fuzzy_path.is_file():
-        cfg.update(fuzzy_settings.load(fuzzy_path.read_text(encoding="utf-8-sig")))
+        input_text = fuzzy_path.read_text(encoding="utf-8-sig")
+        cfg.update(fuzzy_settings.load(input_text))
+        cfg.update(correction_settings.load(input_text))
     path = Path(rime_dir) / "weasel.custom.yaml"
     try:
         text = path.read_text(encoding="utf-8-sig")
@@ -276,6 +279,7 @@ def save_config(rime_dir, cfg):
     fuzzy_path = Path(rime_dir) / "rime_frost.custom.yaml"
     fuzzy_existing = fuzzy_path.read_text(encoding="utf-8-sig") if fuzzy_path.exists() else ""
     fuzzy_value = fuzzy_settings.build_yaml(fuzzy_existing, cfg)
+    fuzzy_value = correction_settings.build_yaml(fuzzy_value, cfg)
     # Validate both merges before changing either file. Every changed original is backed up.
     if fuzzy_value != fuzzy_existing:
         if fuzzy_path.exists():

@@ -1,0 +1,5 @@
+LIBRARY "Mason.dll"
+EXPORTS
+  D2D1CreateFactory=MasonD2D1CreateFactory @1
+  DWriteCreateFactory=MasonDWriteCreateFactory @2
+  MasonTextDiagnostics @3 DATA

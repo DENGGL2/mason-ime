@@ -6,6 +6,7 @@
 $ErrorActionPreference='Stop'
 $taskEngine=(Get-Item -LiteralPath $WeaselDir).FullName.TrimEnd('\')
 $taskUi=Join-Path (Split-Path $PSScriptRoot -Parent) 'ui'
+$taskResources=Split-Path $PSScriptRoot -Parent
 if(-not ('Mason.NativeUi.Resources' -as [type])){Add-Type -Path (Join-Path $taskUi 'Mason.NativeTools.dll')}
 if(-not ('Mason.Diagnostics.RemoteMenuProbe' -as [type])){Add-Type -Path (Join-Path $taskUi 'Mason.NativeTools.dll')}
 if(-not $InspectOnly){& (Join-Path $PSScriptRoot '_menu_protocol.ps1') -AppDir (Split-Path $taskEngine -Parent)}
@@ -31,6 +32,15 @@ foreach($taskName in @('weasel.dll','weaselx64.dll','weasel.ime','weaselx64.ime'
 foreach($taskView in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)){
     $taskBase=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,$taskView)
     try{
+        $taskInstalled=$taskBase.OpenSubKey('SOFTWARE\Rime\Weasel')
+        $taskRegisteredHere=$false
+        if($taskInstalled){
+            try{foreach($taskRootName in @('WeaselRoot','InstallDir')){
+                $taskRegisteredRoot=[string]$taskInstalled.GetValue($taskRootName)
+                if($taskRegisteredRoot -and [IO.Path]::GetFullPath($taskRegisteredRoot).TrimEnd('\').Equals($taskEngine,[StringComparison]::OrdinalIgnoreCase)){$taskRegisteredHere=$true}
+            }}finally{$taskInstalled.Dispose()}
+        }
+        if(-not $taskRegisteredHere){continue}
         $taskTips=$taskBase.OpenSubKey('SOFTWARE\Microsoft\CTF\TIP')
         if(-not $taskTips){continue}
         try{foreach($taskId in $taskTips.GetSubKeyNames()){
@@ -47,19 +57,35 @@ foreach($taskView in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win
 }
 $taskRecords=[Collections.Generic.List[object]]::new()
 $taskStamp=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+$taskBackupRoot=Join-Path (Join-Path (Split-Path $taskEngine -Parent) '备份') ('原生界面-'+$taskStamp)
+$taskTargetIndex=0
 foreach($taskTarget in $taskTargets.GetEnumerator()){
+    $taskTargetIndex++
     $taskFile=$taskTarget.Key;$taskGroup=$taskTarget.Value;$taskMenus=[Mason.NativeUi.Resources]::Read($taskFile)
     $taskCompact=$taskMenus.Length -eq 0 -or ([Mason.NativeUi.Resources]::IsCompact($taskFile) -and [Mason.NativeUi.Resources]::HasMenuRoutes($taskFile))
     $taskMIcon=[Mason.NativeUi.Resources]::HasMIcon($taskFile,$taskIcon,$taskGroup)
-    if($InspectOnly){$taskRecords.Add([PSCustomObject]@{Path=$taskFile;Compact=$taskCompact;MIcon=$taskMIcon;Menus=@($taskMenus | ForEach-Object {[PSCustomObject]@{Resource=$_.Name;Commands=$_.Commands;Ids=$_.CommandIds}})});continue}
-    if($taskCompact -and $taskMIcon){$taskRecords.Add([PSCustomObject]@{Path=$taskFile;Changed=$false;PendingReboot=$false});continue}
+    $taskSupportsText=[Mason.NativeUi.TextAdapter]::SupportsClient($taskFile)
+    $taskTextReady=-not $taskSupportsText -or [Mason.NativeUi.TextAdapter]::IsClientCurrent($taskFile,$taskResources)
+    if($InspectOnly){$taskRecords.Add([PSCustomObject]@{Path=$taskFile;Compact=$taskCompact;MIcon=$taskMIcon;NativeText=$taskTextReady;Menus=@($taskMenus | ForEach-Object {[PSCustomObject]@{Resource=$_.Name;Commands=$_.Commands;Ids=$_.CommandIds}})});continue}
+    if($taskCompact -and $taskMIcon -and $taskTextReady){$taskRecords.Add([PSCustomObject]@{Path=$taskFile;Changed=$false;NativeText=$true;PendingReboot=$false});continue}
+    $taskBackup=Join-Path $taskBackupRoot ('模块-'+$taskTargetIndex)
+    $taskAdapterChanged=[Mason.NativeUi.TextAdapter]::InstallClientAdapter($taskFile,$taskResources,$taskBackup)
+    if($taskCompact -and $taskMIcon -and [Mason.NativeUi.TextAdapter]::HasClientRoutes($taskFile)){
+        if(-not [Mason.NativeUi.TextAdapter]::IsClientCurrent($taskFile,$taskResources)){throw ('客户端标红组件校验失败：'+$taskFile)}
+        $taskRecords.Add([PSCustomObject]@{Path=$taskFile;Changed=$taskAdapterChanged;NativeText=$true;PendingReboot=$false});continue
+    }
     $taskStage=$taskFile+'.mason-ui-new-'+$taskStamp
     Copy-Item -LiteralPath $taskFile -Destination $taskStage
     [Mason.NativeUi.Resources]::Patch($taskStage,$taskIcon,$taskGroup)
-    Copy-Item -LiteralPath $taskFile -Destination ($taskFile+'.mason-ui-backup-'+$taskStamp)
-    [IO.File]::Replace($taskStage,$taskFile,($taskFile+'.mason-ui-replaced-'+$taskStamp))
+    if($taskSupportsText){[IO.File]::WriteAllBytes($taskStage,[Mason.NativeUi.TextAdapter]::PatchClient([IO.File]::ReadAllBytes($taskStage)))}
+    [IO.Directory]::CreateDirectory($taskBackup)|Out-Null
+    $taskSaved=Join-Path $taskBackup ([IO.Path]::GetFileName($taskFile))
+    Copy-Item -LiteralPath $taskFile -Destination $taskSaved
+    if((Get-FileHash -LiteralPath $taskSaved -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash){throw ('原生组件备份校验失败：'+$taskFile)}
+    [IO.File]::Replace($taskStage,$taskFile,$null)
     if(-not [Mason.NativeUi.Resources]::HasMIcon($taskFile,$taskIcon,$taskGroup) -or ($taskMenus.Length -gt 0 -and -not [Mason.NativeUi.Resources]::IsCompact($taskFile))){throw ('任务栏界面验收失败：'+$taskFile)}
-    $taskRecords.Add([PSCustomObject]@{Path=$taskFile;Changed=$true;PendingReboot=$false})
+    if($taskSupportsText -and -not [Mason.NativeUi.TextAdapter]::IsClientCurrent($taskFile,$taskResources)){throw ('客户端标红组件校验失败：'+$taskFile)}
+    $taskRecords.Add([PSCustomObject]@{Path=$taskFile;Changed=$true;NativeText=$true;Backup=$taskSaved;PendingReboot=$false})
 }
 $taskHosts=[Collections.Generic.List[object]]::new()
 foreach($taskHostProcess in @(Get-Process)){

@@ -120,7 +120,7 @@ namespace Mason.NativeUi {
       foreach(var link in MenuLinks){byte[] original=LinkBytes(link,false),target=LinkBytes(link,true);int[] old=TokenOffsets(bytes,original),current=TokenOffsets(bytes,target);if(old.Length+current.Length>1)throw new InvalidDataException("原生菜单链接数量不符合已验证的格式。");if(old.Length==1)Array.Copy(target,0,bytes,old[0],target.Length);}
       int[] oldImport=AsciiTokenOffsets(bytes,"WinSparkle.dll"),newImport=AsciiTokenOffsets(bytes,"Mason.Menu.dll");if(oldImport.Length+newImport.Length>1)throw new InvalidDataException("检查更新入口数量不符合预期。");if(oldImport.Length==1){byte[] name=Encoding.ASCII.GetBytes("Mason.Menu.dll\0");Array.Copy(name,0,bytes,oldImport[0],name.Length);}return bytes;
     }
-    public static string MenuRouteHash(string path){int offset;byte[] bytes=NormalizeLinks(SectionBytes(path,".rdata",out offset));using(var hash=SHA256.Create())return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
+    public static string MenuRouteHash(string path){int offset;byte[] bytes=NormalizeLinks(SectionBytes(path,".rdata",out offset));bytes=TextAdapter.CanonicalRoutes(path,bytes,offset);using(var hash=SHA256.Create())return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
     public static bool HasMenuRoutes(string path){
       if(Read(path).Length==0)return true;int offset;byte[] bytes=SectionBytes(path,".rdata",out offset);int needed=Path.GetExtension(path).Equals(".exe",StringComparison.OrdinalIgnoreCase)?3:2;
       bool links=MenuLinks.Take(needed).All(link=>TokenOffsets(bytes,LinkBytes(link,false)).Length==0 && TokenOffsets(bytes,LinkBytes(link,true)).Length==1);
