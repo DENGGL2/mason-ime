@@ -1,0 +1,157 @@
+# rime-mini-ui: system
+# 麻绳输入法双主题外观；其他输入偏好保持原配置。
+
+patch:
+  style/color_scheme: mini_graphite_light
+  style/color_scheme_dark: mini_graphite_dark
+  style/font_face: Microsoft YaHei UI
+  style/label_font_face: Microsoft YaHei UI
+  style/comment_font_face: Microsoft YaHei UI
+  style/font_point: 14
+  style/label_font_point: 11
+  style/comment_font_point: 12
+  style/horizontal: false
+  style/inline_preedit: false
+  style/preedit_type: composition
+  style/label_format: '%s'
+  style/mark_text: ''
+  style/layout/border_width: 1
+  style/layout/margin_x: 12
+  style/layout/margin_y: 10
+  style/layout/spacing: 10
+  style/layout/candidate_spacing: 6
+  style/layout/hilite_spacing: 2
+  style/layout/hilite_padding: 6
+  style/layout/corner_radius: 10
+  style/layout/round_corner: 7
+  style/layout/shadow_radius: 5
+  style/layout/shadow_offset_x: 0
+  style/layout/shadow_offset_y: 2
+  preset_color_schemes/mini_fluent_light:
+    name: 晴空蓝 · 浅色
+    color_format: abgr
+    back_color: 0xffffff
+    border_color: 0xefe5df
+    shadow_color: 0x16000000
+    text_color: 0x8c7566
+    candidate_text_color: 0x473024
+    label_color: 0x8c7566
+    comment_text_color: 0x8c7566
+    hilited_text_color: 0x473024
+    hilited_back_color: 0xffffff
+    hilited_candidate_back_color: 0xeb6325
+    hilited_candidate_text_color: 0xffffff
+    hilited_label_color: 0xffffff
+    hilited_comment_text_color: 0xffffff
+  preset_color_schemes/mini_fluent_dark:
+    name: 晴空蓝 · 深色
+    color_format: abgr
+    back_color: 0x333333
+    border_color: 0x555555
+    shadow_color: 0x16000000
+    text_color: 0xc5b0a3
+    candidate_text_color: 0xfaf1ed
+    label_color: 0xc5b0a3
+    comment_text_color: 0xc5b0a3
+    hilited_text_color: 0xfaf1ed
+    hilited_back_color: 0x333333
+    hilited_candidate_back_color: 0xffaa89
+    hilited_candidate_text_color: 0x271811
+    hilited_label_color: 0x271811
+    hilited_comment_text_color: 0x271811
+  preset_color_schemes/mini_violet_light:
+    name: 薄雾紫 · 浅色
+    color_format: abgr
+    back_color: 0xffffff
+    border_color: 0xefe5df
+    shadow_color: 0x16000000
+    text_color: 0x8c7566
+    candidate_text_color: 0x473024
+    label_color: 0x8c7566
+    comment_text_color: 0x8c7566
+    hilited_text_color: 0x473024
+    hilited_back_color: 0xffffff
+    hilited_candidate_back_color: 0xd65879
+    hilited_candidate_text_color: 0xffffff
+    hilited_label_color: 0xffffff
+    hilited_comment_text_color: 0xffffff
+  preset_color_schemes/mini_violet_dark:
+    name: 薄雾紫 · 深色
+    color_format: abgr
+    back_color: 0x333333
+    border_color: 0x555555
+    shadow_color: 0x16000000
+    text_color: 0xc5b0a3
+    candidate_text_color: 0xfaf1ed
+    label_color: 0xc5b0a3
+    comment_text_color: 0xc5b0a3
+    hilited_text_color: 0xfaf1ed
+    hilited_back_color: 0x333333
+    hilited_candidate_back_color: 0xffa0b7
+    hilited_candidate_text_color: 0x271811
+    hilited_label_color: 0x271811
+    hilited_comment_text_color: 0x271811
+  preset_color_schemes/mini_sage_light:
+    name: 青松绿 · 浅色
+    color_format: abgr
+    back_color: 0xffffff
+    border_color: 0xefe5df
+    shadow_color: 0x16000000
+    text_color: 0x8c7566
+    candidate_text_color: 0x473024
+    label_color: 0x8c7566
+    comment_text_color: 0x8c7566
+    hilited_text_color: 0x473024
+    hilited_back_color: 0xffffff
+    hilited_candidate_back_color: 0x678225
+    hilited_candidate_text_color: 0xffffff
+    hilited_label_color: 0xffffff
+    hilited_comment_text_color: 0xffffff
+  preset_color_schemes/mini_sage_dark:
+    name: 青松绿 · 深色
+    color_format: abgr
+    back_color: 0x333333
+    border_color: 0x555555
+    shadow_color: 0x16000000
+    text_color: 0xc5b0a3
+    candidate_text_color: 0xfaf1ed
+    label_color: 0xc5b0a3
+    comment_text_color: 0xc5b0a3
+    hilited_text_color: 0xfaf1ed
+    hilited_back_color: 0x333333
+    hilited_candidate_back_color: 0xbcd683
+    hilited_candidate_text_color: 0x271811
+    hilited_label_color: 0x271811
+    hilited_comment_text_color: 0x271811
+  preset_color_schemes/mini_graphite_light:
+    name: 石墨灰 · 浅色
+    color_format: abgr
+    back_color: 0xffffff
+    border_color: 0xefe5df
+    shadow_color: 0x16000000
+    text_color: 0x8c7566
+    candidate_text_color: 0x473024
+    label_color: 0x8c7566
+    comment_text_color: 0x8c7566
+    hilited_text_color: 0x473024
+    hilited_back_color: 0xffffff
+    hilited_candidate_back_color: 0x252525
+    hilited_candidate_text_color: 0xffffff
+    hilited_label_color: 0xffffff
+    hilited_comment_text_color: 0xffffff
+  preset_color_schemes/mini_graphite_dark:
+    name: 石墨灰 · 深色
+    color_format: abgr
+    back_color: 0x333333
+    border_color: 0x555555
+    shadow_color: 0x16000000
+    text_color: 0xc5b0a3
+    candidate_text_color: 0xfaf1ed
+    label_color: 0xc5b0a3
+    comment_text_color: 0xc5b0a3
+    hilited_text_color: 0xfaf1ed
+    hilited_back_color: 0x333333
+    hilited_candidate_back_color: 0xd0d0d0
+    hilited_candidate_text_color: 0x271811
+    hilited_label_color: 0x271811
+    hilited_comment_text_color: 0x271811

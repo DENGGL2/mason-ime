@@ -1,0 +1,17 @@
+{
+  "product": "Mason",
+  "chinese_name": "麻绳输入法",
+  "version": "2.4.4",
+  "license": "GPL-3.0",
+  "github_url": "https://github.com/DENGGL2/mason-ime",
+  "thanks": [
+    "Rime / 小狼毫",
+    "librime",
+    "librime-lua",
+    "白霜拼音",
+    "雾凇拼音",
+    "librime-cloud",
+    "OpenCC",
+    "FlClash"
+  ]
+}
