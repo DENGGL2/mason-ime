@@ -34,8 +34,8 @@ using Mason.Common;
 [assembly: AssemblyTitle("麻绳输入法 · 设置")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法设置")]
-[assembly: AssemblyVersion("2.4.6.0")]
-[assembly: AssemblyFileVersion("2.4.6.0")]
+[assembly: AssemblyVersion("2.4.7.0")]
+[assembly: AssemblyFileVersion("2.4.7.0")]
 
 namespace Mason {
   // Data checked against FlClash v0.9.3 and its pinned prism_ui dependency.
@@ -327,7 +327,7 @@ namespace Mason {
     private List<SettingsButton> modes=new List<SettingsButton>();
     private Canvas preview;
     private string appDir="",programDir="",logDir="",backupDir="";
-    private SettingsSwitch fuzzySwitch,correctionSwitch;
+    private SettingsSwitch fuzzySwitch,correctionSwitch,learningSwitch;
     private string page="appearance",rimeDir="",weaselDir="",updateStatus="尚未检查词库更新";
     private string statusText="正在读取设置…";
     private bool ready=false;
@@ -447,7 +447,7 @@ namespace Mason {
       fadeBottom.Opacity=1;
     }
     private void BuildPage() {
-      list.Children.Clear();PruneButtons();preview=null;updateLabel=null;updateButton=null;fuzzySwitch=null;correctionSwitch=null;modes.Clear();
+      list.Children.Clear();PruneButtons();preview=null;updateLabel=null;updateButton=null;fuzzySwitch=null;correctionSwitch=null;learningSwitch=null;modes.Clear();
       title.Text=page=="appearance"?"外观":page=="maintenance"?"输入":"使用指南";
       footerRegion.Visibility=page=="guide"?Visibility.Collapsed:Visibility.Visible;
       scroll.Resources["RimeScrollTrackMargin"]=new Thickness(0,TitleAreaHeight+4,0,page=="guide"?4:ActionAreaHeight+4);
@@ -576,6 +576,14 @@ namespace Mason {
       example.Inlines.Add(new System.Windows.Documents.Run("  →  ") {Foreground=BrushOf("muted")});
       example.Inlines.Add(new System.Windows.Documents.Run("你告诉我"));content.Children.Add(example);
       AutomationProperties.SetName(example,"纠错示例：nigapsuwo，字母 p 标红，中文候选为你告诉我");
+      content.Children.Add(new Border {Height=1,Background=BrushOf("line"),Margin=new Thickness(0,18,0,14)});
+      var learningRow=new DockPanel {Margin=new Thickness(0,0,0,4)};
+      learningSwitch=new SettingsSwitch(this,Fuzzy("learning_flexible"),"柔性词频学习");
+      DockPanel.SetDock(learningSwitch,Dock.Right);learningRow.Children.Add(learningSwitch);
+      var learningTitle=Text("柔性词频学习",16,"text");learningTitle.FontWeight=FontWeights.SemiBold;learningTitle.VerticalAlignment=VerticalAlignment.Center;learningRow.Children.Add(learningTitle);content.Children.Add(learningRow);
+      content.Children.Add(Text("开启后根据输入频次权重修改排序，关闭则默认2次选择会自动置顶",14,"muted"));
+      RoutedEventHandler learningChanged=delegate{if(Busy)return;cfg["learning_flexible"]=learningSwitch.IsChecked==true;Changed();};
+      learningSwitch.Checked+=learningChanged;learningSwitch.Unchecked+=learningChanged;
       list.Children.Add(new Border {Background=BrushOf("surface"),BorderBrush=BrushOf("line"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(20),Padding=new Thickness(18),Margin=new Thickness(0,0,0,16),Child=content});
       RoutedEventHandler changed=delegate{if(Busy)return;cfg["correction_enabled"]=correctionSwitch.IsChecked==true;example.Opacity=correctionSwitch.IsChecked==true?1:.55;Changed();};
       correctionSwitch.Checked+=changed;correctionSwitch.Unchecked+=changed;
@@ -636,7 +644,7 @@ namespace Mason {
     private void Theme(string value){if(Busy || ThemeMode==value)return;cfg["ui_theme"]=value;systemDark=ReadSystemDark();foreach(string name in palettes)if(Convert.ToString(cfg["scheme"]).StartsWith("mini_"+name+"_")){cfg["scheme"]="mini_"+name+"_"+(IsDark?"dark":"light");break;}ApplyTheme(true);double offset=scroll.VerticalOffset;Changed();BuildPage();Dispatcher.BeginInvoke(new Action(delegate{scroll.ScrollToVerticalOffset(offset);}));}
     private void ApplyTheme(bool animate){foreach(var pair in brushes)if(animate)Motion.Color(pair.Value,ColorOf(pair.Key),Motion.ThemeMs,null);else pair.Value.Color=ColorOf(pair.Key);UpdateScrollColors();if(systemButton!=null)systemButton.Selected=ThemeMode=="system";if(lightButton!=null)lightButton.Selected=ThemeMode=="light";if(darkButton!=null)darkButton.Selected=ThemeMode=="dark";foreach(var button in Buttons)button.ApplyColors(animate,Motion.ThemeMs,null);SetNativeTheme();}
     private void Changed(){SetStatus("");}
-    private void Reset(){if(Busy)return;if(page=="maintenance"){cfg["fuzzy_enabled"]=false;cfg["correction_enabled"]=true;foreach(var option in FuzzyOptions)cfg["fuzzy_"+option[0]]=false;}else{cfg["scheme"]="mini_graphite_"+(IsDark?"dark":"light");cfg["radius"]=10;cfg["fontsize"]=14;cfg["horizontal"]=false;}Changed();BuildPage();scroll.ScrollToTop();}
+    private void Reset(){if(Busy)return;if(page=="maintenance"){cfg["fuzzy_enabled"]=false;cfg["correction_enabled"]=true;cfg["learning_flexible"]=false;foreach(var option in FuzzyOptions)cfg["fuzzy_"+option[0]]=false;}else{cfg["scheme"]="mini_graphite_"+(IsDark?"dark":"light");cfg["radius"]=10;cfg["fontsize"]=14;cfg["horizontal"]=false;}Changed();BuildPage();scroll.ScrollToTop();}
     private void SetStatus(string message){statusText=message;status.Text=message;}
     private async Task Initialize(){
       string failure=null;
@@ -654,14 +662,14 @@ namespace Mason {
     private async Task UpdateDictionary(){if(!await RequireInstalled())return;await RunJob("update",null,"正在检查最新词库…",true);}
     private async Task<bool> RunJob(string action,object payload,string pending,bool notify){
       if(Busy)return false;if(!Installed()){await Info("提示","请先安装麻绳输入法。");return false;}
-      Busy=true;SetStatus(pending);saveButton.IsEnabled=false;resetButton.IsEnabled=false;if(updateButton!=null)updateButton.IsEnabled=false;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=false;if(correctionSwitch!=null)correctionSwitch.IsEnabled=false;
+      Busy=true;SetStatus(pending);saveButton.IsEnabled=false;resetButton.IsEnabled=false;if(updateButton!=null)updateButton.IsEnabled=false;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=false;if(correctionSwitch!=null)correctionSwitch.IsEnabled=false;if(learningSwitch!=null)learningSwitch.IsEnabled=false;
       bool ok=false;string message=null;
       try{var result=await backend.Run(action,payload,delegate(string progressMessage){Dispatcher.BeginInvoke(new Action(delegate{SetStatus(progressMessage);if(updateLabel!=null)updateLabel.Text=progressMessage;}));});
         ok=Convert.ToBoolean(result["ok"]);message=Convert.ToString(result["message"]);Busy=false;
         if(ok && result.ContainsKey("data"))LoadData((Dictionary<string,object>)result["data"],false);
         SetStatus(message.Replace("\n"," · "));
       }catch(Exception error){Busy=false;SetStatus("操作未完成");message=error.Message;}
-      finally{Busy=false;saveButton.IsEnabled=true;resetButton.IsEnabled=true;if(updateButton!=null)updateButton.IsEnabled=true;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=true;if(correctionSwitch!=null)correctionSwitch.IsEnabled=true;}
+      finally{Busy=false;saveButton.IsEnabled=true;resetButton.IsEnabled=true;if(updateButton!=null)updateButton.IsEnabled=true;if(fuzzySwitch!=null)fuzzySwitch.IsEnabled=true;if(correctionSwitch!=null)correctionSwitch.IsEnabled=true;if(learningSwitch!=null)learningSwitch.IsEnabled=true;}
       if(action=="update" && !ok && updateLabel!=null)updateLabel.Text=message;
       if(!ok || notify)await Info(action=="update"?"词库更新":"提示",message);
       return ok;

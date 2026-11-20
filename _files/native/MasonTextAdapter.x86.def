@@ -3,3 +3,5 @@ EXPORTS
   D2D1CreateFactory=_MasonD2D1CreateFactory@16 @1
   DWriteCreateFactory=_MasonDWriteCreateFactory@12 @2
   MasonTextDiagnostics @3 DATA
+  MasonMotionDiagnostics @4 DATA
+  MasonNotificationDiagnostics @5 DATA

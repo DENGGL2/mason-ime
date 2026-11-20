@@ -16,6 +16,6 @@ foreach($taskArch in @('x64','x86')){
   & (Join-Path $taskSdk ('bin\'+$taskVersion+'\x64\rc.exe')) /nologo /c65001 ('/fo'+$taskResource) (Join-Path $taskNative 'MasonTextAdapter.rc')
   if($LASTEXITCODE -ne 0){throw '标红绘制版本资源编译失败。'}
   $taskDef=Join-Path $taskNative $(if($taskArch -eq 'x86'){'MasonTextAdapter.x86.def'}else{'MasonTextAdapter.def'})
-  & (Join-Path $taskVc ('bin\Hostx64\'+$taskArch+'\cl.exe')) /nologo /LD /EHsc /MT /utf-8 /std:c++17 /O2 /DUNICODE /D_UNICODE ('/Fe:'+(Join-Path $taskOut 'Mason.dll')) ('/Fo:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.obj'))) (Join-Path $taskNative 'MasonTextAdapter.cpp') $taskResource /link ('/DEF:'+$taskDef) ('/IMPLIB:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.lib'))) ('/MAP:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.map'))) user32.lib
+  & (Join-Path $taskVc ('bin\Hostx64\'+$taskArch+'\cl.exe')) /nologo /LD /EHsc /MT /utf-8 /std:c++17 /O2 /DUNICODE /D_UNICODE ('/Fe:'+(Join-Path $taskOut 'Mason.dll')) ('/Fo:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.obj'))) (Join-Path $taskNative 'MasonTextAdapter.cpp') $taskResource /link ('/DEF:'+$taskDef) ('/IMPLIB:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.lib'))) ('/MAP:'+(Join-Path $BuildDir ('MasonTextAdapter-'+$taskArch+'.map'))) user32.lib gdi32.lib comctl32.lib
   if($LASTEXITCODE -ne 0){throw ('原生标红绘制编译失败：'+$taskArch)}
 }

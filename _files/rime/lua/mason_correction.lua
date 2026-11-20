@@ -62,7 +62,8 @@ local function exact(translator, input, segment, minimum)
   if not translation then return false end
   local count = 0
   for cand in translation:iter() do
-    if cand._end == segment._end and cand.quality >= minimum
+    if cand.start == segment.start and cand._end == segment._end
+        and (not minimum or cand.quality >= minimum)
         and (cand.type == 'phrase' or cand.type == 'user_phrase' or cand.type == 'table') then return true end
     count = count + 1
     if count == 8 then break end
@@ -113,7 +114,10 @@ local function suggestions(input, segment, env)
   -- Complete legal syllables include normal text and unfinished word prefixes.
   -- Keep them intact instead of marking a valid letter while the user types.
   if legal(input) then return {} end
-  if exact(env.original, input, segment, .7) or exact(env.custom, input, segment, 90)
+  -- Abbreviations carry a spelling penalty even when they match a real word.
+  -- The read-only lookup has sentence/completion disabled, so full-span lexical
+  -- matches are valid without a score threshold; arbitrary sentences are not.
+  if exact(env.original, input, segment) or exact(env.custom, input, segment, 90)
       or exact(env.english, input, segment, .65) then return {} end
   local variants = {}
   for position = 1, #input do

@@ -1,7 +1,7 @@
 #include <windows.h>
 1 VERSIONINFO
-FILEVERSION 2,4,6,0
-PRODUCTVERSION 2,4,6,0
+FILEVERSION 2,4,7,0
+PRODUCTVERSION 2,4,7,0
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 FILEFLAGS 0
 FILEOS VOS_NT_WINDOWS32
@@ -13,11 +13,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Mason\0"
       VALUE "FileDescription", "麻绳输入法 · 拼音标红绘制\0"
-      VALUE "FileVersion", "2.4.6\0"
+      VALUE "FileVersion", "2.4.7\0"
       VALUE "InternalName", "Mason.TextAdapter\0"
       VALUE "OriginalFilename", "Mason.dll\0"
       VALUE "ProductName", "Mason\0"
-      VALUE "ProductVersion", "2.4.6\0"
+      VALUE "ProductVersion", "2.4.7\0"
       VALUE "LegalCopyright", "GPL-3.0\0"
     END
   END

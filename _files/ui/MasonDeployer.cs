@@ -11,8 +11,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("麻绳输入法 · 设置入口")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.6.0")]
-[assembly: AssemblyFileVersion("2.4.6.0")]
+[assembly: AssemblyVersion("2.4.7.0")]
+[assembly: AssemblyFileVersion("2.4.7.0")]
 
 namespace Mason.Entry {
   public static class Program {

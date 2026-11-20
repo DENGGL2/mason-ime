@@ -10,8 +10,8 @@ using Mason.Common;
 
 [assembly: AssemblyTitle("麻绳输入法 · 输入配置")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.6.0")]
-[assembly: AssemblyFileVersion("2.4.6.0")]
+[assembly: AssemblyVersion("2.4.7.0")]
+[assembly: AssemblyFileVersion("2.4.7.0")]
 
 namespace Mason.InputSetup {
   public static class InputConfiguration {
@@ -37,6 +37,9 @@ namespace Mason.InputSetup {
         var defaults=new[]{"# mason-correction-settings-begin","  mason_correction/enabled: true","# mason-correction-settings-end"};
         lines.InsertRange(end,defaults);end+=defaults.Length;
       }
+      if(!lines.Any(line=>Regex.IsMatch(line,@"^  ['"+"\""+@"]?mason_learning/flexible['"+"\""+@"]?\s*:"))){
+        lines.Insert(end,"  mason_learning/flexible: false");end++;
+      }
       lines.InsertRange(end,block);
       return String.Join("\n",lines).TrimEnd()+"\n";
     }
@@ -58,7 +61,7 @@ namespace Mason.InputSetup {
       };
       bool nativeColour=false;string server=Path.Combine(MasonPaths.Program(app),"WeaselServer.exe");
       if(File.Exists(server)){Mason.NativeUi.TextAdapter.Install(MasonPaths.Program(app),resources,Path.Combine(backup,"原生绘制"));nativeColour=Mason.NativeUi.TextAdapter.HasRoutes(server);}
-      foreach(string name in new[]{"mason_modes.lua","mason_preedit.lua","mason_candidates.lua","mason_correction.lua","mason_correction_guard.lua"})write(Path.Combine("lua",name),File.ReadAllBytes(Path.Combine(resources,"rime","lua",name)));
+      foreach(string name in new[]{"mason_modes.lua","mason_preedit.lua","mason_candidates.lua","mason_correction.lua","mason_correction_guard.lua","mason_learning.lua"})write(Path.Combine("lua",name),File.ReadAllBytes(Path.Combine(resources,"rime","lua",name)));
       string schema=Path.Combine(user,"rime_frost.custom.yaml");write("rime_frost.custom.yaml",new UTF8Encoding(false).GetBytes(Patch(File.Exists(schema)?File.ReadAllText(schema,Encoding.UTF8):"patch:\n")));
       string appearance=Path.Combine(user,"weasel.custom.yaml");write("weasel.custom.yaml",new UTF8Encoding(false).GetBytes(Appearance(File.Exists(appearance)?File.ReadAllText(appearance,Encoding.UTF8):"patch:\n")));
       return new JavaScriptSerializer().Serialize(new{ok=true,changed=changed,backup=Directory.Exists(backup)?backup:"",controls=4,candidate_marks=false,correction=true,native_colour=nativeColour});

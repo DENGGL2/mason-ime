@@ -24,6 +24,17 @@ python -B .\_files\scripts\build_release.py --output-dir .\release\Mason
 
 如果托管程序和原生组件已经编译好，可以传入 `--no-build` 仅生成运行目录。
 
+## 简拼与学习回归
+
+已有 Mason 安装时，可使用安装中的 Rime DLL 运行隔离测试；`--program` 指向包含 `rime.dll` 的程序目录：
+
+```powershell
+python -B .\_files\scripts\tests\verify_learning.py --program "D:\Program Files (x86)\Mason\程序" --output .\build\learning-check
+python -B -m unittest discover -s .\_files\scripts\tests -p test_correction_settings.py
+```
+
+输出目录必须不存在。回归使用新建的私有词库，覆盖合法简拼、真实错拼标红、两次主动选词置顶、柔性排序、分页、取消和重启后的记录保留，不写入个人选词记录。
+
 ## 原生标红组件
 
 `build_release.py` 会自动调用以下编译步骤，也可以单独执行：

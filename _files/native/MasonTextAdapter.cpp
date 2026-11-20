@@ -4,7 +4,10 @@
 #include <new>
 #include <utility>
 #include <vector>
+#include <intrin.h>
 #include "MasonCorrectionText.h"
+#include "MasonCandidateMotion.h"
+#include "MasonServerNotifications.h"
 
 // Numeric diagnostics only: no input text or personal data is recorded.
 struct MasonTextDiagnosticData {
@@ -42,8 +45,9 @@ BOOL CALLBACK Initialize(PINIT_ONCE, PVOID, PVOID*) {
   // A client may be unloaded before a retained layout. Keep this small adapter
   // loaded until process exit so any outstanding proxy always has live code.
   HMODULE own = nullptr;
-  return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
-      reinterpret_cast<LPCWSTR>(&Initialize), &own);
+  if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+      reinterpret_cast<LPCWSTR>(&Initialize), &own))return FALSE;
+  MasonCandidateMotion::Install();MasonServerNotifications::Install();return TRUE;
 }
 
 // Direct2D resources accept render targets in other resource methods. Keep the
@@ -55,17 +59,58 @@ struct NativeTable {
   void** original;
   std::vector<void*> storage;
   std::vector<DWRITE_TEXT_RANGE> errors;
+  std::wstring preedit;
+  HDC boundDc=nullptr;RECT boundRect{};
 };
 std::vector<NativeTable*> nativeTables;
 constexpr size_t TableLimit = 512;
+struct NativePrototype {
+  void** original=nullptr;
+  std::vector<void*> storage;
+};
+std::vector<NativePrototype> nativePrototypes;
+constexpr size_t PrototypeLimit = 64;
 
 bool Readable(const MEMORY_BASIC_INFORMATION& region) noexcept {
   return region.State == MEM_COMMIT && !(region.Protect & (PAGE_NOACCESS | PAGE_GUARD));
 }
-bool Executable(void* address) noexcept {
-  MEMORY_BASIC_INFORMATION region{};
-  if (!VirtualQuery(address, &region, sizeof(region)) || !Readable(region)) return false;
-  return (region.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+bool NativeMethods(void** original,size_t minimum,std::vector<void*>& storage) {
+  for(const auto& prototype:nativePrototypes)if(prototype.original==original){
+    storage=prototype.storage;return storage.size()>=minimum+1;
+  }
+  MEMORY_BASIC_INFORMATION prefix{};void* previous=nullptr;
+  if(VirtualQuery(original-1,&prefix,sizeof(prefix)) && Readable(prefix))previous=original[-1];
+  storage.push_back(previous);
+  MEMORY_BASIC_INFORMATION tableRegion{};
+  ULONG_PTR tableBegin=0,tableEnd=0;
+  std::vector<MEMORY_BASIC_INFORMATION> codeRegions;
+  for(size_t index=0;index<TableLimit;index++){
+    const ULONG_PTR slot=reinterpret_cast<ULONG_PTR>(original+index);
+    if(slot<tableBegin || slot+sizeof(void*)>tableEnd){
+      if(!VirtualQuery(original+index,&tableRegion,sizeof(tableRegion)) || !Readable(tableRegion))break;
+      tableBegin=reinterpret_cast<ULONG_PTR>(tableRegion.BaseAddress);tableEnd=tableBegin+tableRegion.RegionSize;
+      if(slot+sizeof(void*)>tableEnd)break;
+    }
+    void* method=original[index];const ULONG_PTR address=reinterpret_cast<ULONG_PTR>(method);
+    bool executable=false;
+    for(const auto& region:codeRegions){
+      const ULONG_PTR begin=reinterpret_cast<ULONG_PTR>(region.BaseAddress);
+      if(address>=begin && address-begin<region.RegionSize){executable=true;break;}
+    }
+    if(!executable){
+      MEMORY_BASIC_INFORMATION region{};
+      if(!VirtualQuery(method,&region,sizeof(region)) || !Readable(region) ||
+          !(region.Protect&(PAGE_EXECUTE|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)))break;
+      codeRegions.push_back(region);
+    }
+    storage.push_back(method);
+  }
+  if(storage.size()<minimum+1)return false;
+  // Native DirectWrite/Direct2D modules remain loaded. Preserve the complete
+  // verified table and RTTI prefix once per class, then copy it per object.
+  // This avoids hundreds of VirtualQuery calls for every measured candidate.
+  if(nativePrototypes.size()<PrototypeLimit)nativePrototypes.push_back(NativePrototype{original,storage});
+  return true;
 }
 template<class Function> Function Original(void* object, size_t index) noexcept {
   if (!object) return nullptr;
@@ -78,7 +123,7 @@ template<class Function> Function Original(void* object, size_t index) noexcept 
   ReleaseSRWLockShared(&targetLock); return result;
 }
 struct NativePatch { size_t index; void* method; };
-bool AdaptNativeObject(void* object, size_t minimum, const NativePatch* patches, size_t patchCount, const std::vector<DWRITE_TEXT_RANGE>* errors = nullptr) noexcept {
+bool AdaptNativeObject(void* object, size_t minimum, const NativePatch* patches, size_t patchCount, const std::vector<DWRITE_TEXT_RANGE>* errors = nullptr, const std::wstring* preedit=nullptr) noexcept {
   if (!object) return false;
   MEMORY_BASIC_INFORMATION objectRegion{};
   if (!VirtualQuery(object, &objectRegion, sizeof(objectRegion)) || !Readable(objectRegion) ||
@@ -93,22 +138,8 @@ bool AdaptNativeObject(void* object, size_t minimum, const NativePatch* patches,
   if (table) try {
     table->original = original;
     if (errors) table->errors = *errors;
-    MEMORY_BASIC_INFORMATION prefix{};
-    void* previous = nullptr;
-    if (VirtualQuery(original - 1, &prefix, sizeof(prefix)) && Readable(prefix)) previous = original[-1];
-    // Preserve the RTTI prefix too: native Direct2D methods may cast between
-    // internal resource classes when a bitmap uses another native render target.
-    table->storage.push_back(previous);
-    for (size_t index = 0; index < TableLimit; index++) {
-      MEMORY_BASIC_INFORMATION region{};
-      if (!VirtualQuery(original + index, &region, sizeof(region)) || !Readable(region) ||
-          reinterpret_cast<ULONG_PTR>(original + index + 1) >
-              reinterpret_cast<ULONG_PTR>(region.BaseAddress) + region.RegionSize) break;
-      void* method = original[index];
-      if (!Executable(method)) break;
-      table->storage.push_back(method);
-    }
-    if (table->storage.size() >= minimum + 1) {
+    if (preedit) table->preedit = *preedit;
+    if (NativeMethods(original,minimum,table->storage)) {
       for (size_t i = 0; i < patchCount; i++) table->storage[patches[i].index + 1] = patches[i].method;
       nativeTables.push_back(table);
       auto* field = reinterpret_cast<PVOID volatile*>(object);
@@ -149,6 +180,20 @@ std::vector<DWRITE_TEXT_RANGE> LayoutRanges(IDWriteTextLayout* layout) {
   } catch (...) { ReleaseSRWLockShared(&targetLock); throw; }
   ReleaseSRWLockShared(&targetLock); return ranges;
 }
+std::wstring LayoutPreedit(IDWriteTextLayout* layout) {
+  std::wstring text;if(!layout)return text;void** current=*reinterpret_cast<void***>(layout);
+  AcquireSRWLockShared(&targetLock);
+  try{for(auto* table:nativeTables)if(table->storage.data()+1==current){text=table->preedit;break;}}
+  catch(...){ReleaseSRWLockShared(&targetLock);throw;}
+  ReleaseSRWLockShared(&targetLock);return text;
+}
+MasonCandidateMotion::GlyphPending CaptureLetters(ID2D1RenderTarget* target,D2D1_POINT_2F origin,IDWriteTextLayout* layout,const std::wstring& text) {
+  HDC dc=nullptr;RECT binding{};void** current=*reinterpret_cast<void***>(target);
+  AcquireSRWLockShared(&targetLock);
+  for(auto* table:nativeTables)if(table->storage.data()+1==current){dc=table->boundDc;binding=table->boundRect;break;}
+  ReleaseSRWLockShared(&targetLock);
+  return MasonCandidateMotion::BeforeGlyphs(dc,binding,target,origin,layout,text);
+}
 void RecordPlan(const MasonCorrectionText::Plan& plan, UINT32 length) noexcept {
   InterlockedIncrement(&MasonTextDiagnostics.layouts);
   if (plan.errors.empty()) return;
@@ -157,9 +202,11 @@ void RecordPlan(const MasonCorrectionText::Plan& plan, UINT32 length) noexcept {
   InterlockedExchange(&MasonTextDiagnostics.lastMarkedLength, length);
 }
 void AdaptLayout(IDWriteTextLayout** output, const MasonCorrectionText::Plan& plan) noexcept {
-  if (!output || !*output || plan.errors.empty()) return;
+  if (!output || !*output) return;
+  const bool preedit=MasonCandidateMotion::VisibleText(plan.text.data(),static_cast<UINT32>(plan.text.size()));
+  if(plan.errors.empty() && !preedit)return;
   const NativePatch patch = {2, reinterpret_cast<void*>(&NativeRelease)};
-  AdaptNativeObject(*output, 67, &patch, 1, &plan.errors);
+  AdaptNativeObject(*output, 67, &patch, 1, &plan.errors, preedit?&plan.text:nullptr);
 }
 using CreateLayoutFunction = HRESULT(STDMETHODCALLTYPE*)(IDWriteFactory*, const WCHAR*, UINT32,
     IDWriteTextFormat*, FLOAT, FLOAT, IDWriteTextLayout**);
@@ -168,7 +215,7 @@ HRESULT STDMETHODCALLTYPE NativeTextLayout(IDWriteFactory* factory, const WCHAR*
   const auto original = Original<CreateLayoutFunction>(factory, 18); if (!original) return E_UNEXPECTED;
   if (!text || length > 1024) return original(factory, text, length, format, width, height, output);
   try {
-    const auto plan = MasonCorrectionText::Parse(text, length); RecordPlan(plan, length);
+    const auto plan = MasonCorrectionText::Parse(text, length); RecordPlan(plan, length); MasonCandidateMotion::RecordText(plan.text.c_str(),length);
     const HRESULT result = original(factory, plan.text.c_str(), length, format, width, height, output);
     if (SUCCEEDED(result)) AdaptLayout(output, plan); return result;
   } catch (...) { return original(factory, text, length, format, width, height, output); }
@@ -181,7 +228,7 @@ HRESULT STDMETHODCALLTYPE NativeGdiTextLayout(IDWriteFactory* factory, const WCH
   const auto original = Original<CreateGdiLayoutFunction>(factory, 19); if (!original) return E_UNEXPECTED;
   if (!text || length > 1024) return original(factory, text, length, format, width, height, pixels, transform, natural, output);
   try {
-    const auto plan = MasonCorrectionText::Parse(text, length); RecordPlan(plan, length);
+    const auto plan = MasonCorrectionText::Parse(text, length); RecordPlan(plan, length); MasonCandidateMotion::RecordText(plan.text.c_str(),length);
     const HRESULT result = original(factory, plan.text.c_str(), length, format, width, height, pixels, transform, natural, output);
     if (SUCCEEDED(result)) AdaptLayout(output, plan); return result;
   } catch (...) { return original(factory, text, length, format, width, height, pixels, transform, natural, output); }
@@ -192,20 +239,36 @@ void AdaptWriteFactory(IDWriteFactory* factory) noexcept {
   AdaptNativeObject(factory, 24, patches, sizeof(patches)/sizeof(patches[0]));
 }
 
-void AdaptTarget(ID2D1RenderTarget* target) noexcept;
+void AdaptTarget(ID2D1RenderTarget* target,bool dc=false) noexcept;
+using BeginDrawFunction = void(STDMETHODCALLTYPE*)(ID2D1RenderTarget*);
+using EndDrawFunction = HRESULT(STDMETHODCALLTYPE*)(ID2D1RenderTarget*,D2D1_TAG*,D2D1_TAG*);
+void STDMETHODCALLTYPE NativeBeginDraw(ID2D1RenderTarget* target) noexcept {
+  const auto original=Original<BeginDrawFunction>(target,48);if(!original)return;
+  MasonCandidateMotion::BeginTextFrame();original(target);
+}
+HRESULT STDMETHODCALLTYPE NativeEndDraw(ID2D1RenderTarget* target,D2D1_TAG* first,D2D1_TAG* second) noexcept {
+  const auto original=Original<EndDrawFunction>(target,49);if(!original)return E_UNEXPECTED;
+  const HRESULT result=original(target,first,second);
+  if(SUCCEEDED(result))MasonCandidateMotion::CompleteGlyphs(target);
+  MasonCandidateMotion::EndTextFrame();return result;
+}
 using DrawLayoutFunction = MasonCorrectionText::DrawTextLayoutFunction;
 void STDMETHODCALLTYPE NativeDrawLayout(ID2D1RenderTarget* target, D2D1_POINT_2F origin,
     IDWriteTextLayout* layout, ID2D1Brush* normal, D2D1_DRAW_TEXT_OPTIONS options) noexcept {
   const auto original = Original<DrawLayoutFunction>(target, 28); if (!original) return;
   InterlockedIncrement(&MasonTextDiagnostics.drawLayouts);
+  MasonCandidateMotion::GlyphPending glyphs;
+  try{glyphs=CaptureLetters(target,origin,layout,LayoutPreedit(layout));}catch(...){}
+  bool decorated=false;
   try {
     const auto ranges = LayoutRanges(layout);
     if (!ranges.empty()) {
       InterlockedIncrement(&MasonTextDiagnostics.drawMarkedLayouts);
-      MasonCorrectionText::Draw(target, origin, layout, normal, ranges, options, original); return;
+      MasonCorrectionText::Draw(target, origin, layout, normal, ranges, options, original);decorated=true;
     }
   } catch (...) {}
-  original(target, origin, layout, normal, options);
+  if(!decorated)original(target, origin, layout, normal, options);
+  try{MasonCandidateMotion::AfterGlyphs(target,glyphs);}catch(...){}
 }
 using DrawTextFunction = void(STDMETHODCALLTYPE*)(ID2D1RenderTarget*, const WCHAR*, UINT32,
     IDWriteTextFormat*, const D2D1_RECT_F*, ID2D1Brush*, D2D1_DRAW_TEXT_OPTIONS, DWRITE_MEASURING_MODE);
@@ -214,10 +277,11 @@ void STDMETHODCALLTYPE NativeDrawText(ID2D1RenderTarget* target, const WCHAR* te
     D2D1_DRAW_TEXT_OPTIONS options, DWRITE_MEASURING_MODE measuring) noexcept {
   const auto original = Original<DrawTextFunction>(target, 27); if (!original) return;
   InterlockedIncrement(&MasonTextDiagnostics.drawTexts);
+  MasonCandidateMotion::RecordText(text,length);
   bool marked = false;
   if (text && length <= 1024) for (UINT32 i = 1; i < length; i++)
     if (text[i] == MasonCorrectionText::ErrorMarker && MasonCorrectionText::Letter(text[i-1])) { marked = true; break; }
-  if (marked && format && bounds && bounds->right >= bounds->left && bounds->bottom >= bounds->top) {
+  if ((marked || MasonCandidateMotion::VisibleText(text,length)) && format && bounds && bounds->right >= bounds->left && bounds->bottom >= bounds->top) {
     try {
       const auto plan = MasonCorrectionText::Parse(text, length);
       struct TextResources {
@@ -239,11 +303,16 @@ void STDMETHODCALLTYPE NativeDrawText(ID2D1RenderTarget* target, const WCHAR* te
         }
       }
       if (SUCCEEDED(result) && resource.layout) {
-        InterlockedIncrement(&MasonTextDiagnostics.drawMarkedTexts);
-        InterlockedExchange(&MasonTextDiagnostics.lastMarkedStart, plan.errors.front().startPosition);
-        InterlockedExchange(&MasonTextDiagnostics.lastMarkedLength, length);
-        MasonCorrectionText::Draw(target, D2D1::Point2F(bounds->left, bounds->top), resource.layout,
-            normal, plan.errors, options, Original<DrawLayoutFunction>(target, 28)); return;
+        const auto origin=D2D1::Point2F(bounds->left,bounds->top);
+        auto glyphs=CaptureLetters(target,origin,resource.layout,plan.text);
+        if(marked){
+          InterlockedIncrement(&MasonTextDiagnostics.drawMarkedTexts);
+          InterlockedExchange(&MasonTextDiagnostics.lastMarkedStart, plan.errors.front().startPosition);
+          InterlockedExchange(&MasonTextDiagnostics.lastMarkedLength, length);
+          MasonCorrectionText::Draw(target,origin,resource.layout,normal,plan.errors,options,Original<DrawLayoutFunction>(target,28));
+        }else original(target,text,length,format,bounds,normal,options,measuring);
+        try{MasonCandidateMotion::AfterGlyphs(target,glyphs);}catch(...){}
+        return;
       }
     } catch (...) {}
   }
@@ -259,10 +328,19 @@ HRESULT STDMETHODCALLTYPE NativeCompatibleTarget(ID2D1RenderTarget* target, cons
   if (SUCCEEDED(result) && output && *output) { InterlockedIncrement(&MasonTextDiagnostics.compatibleTargets); AdaptTarget(*output); }
   return result;
 }
-void AdaptTarget(ID2D1RenderTarget* target) noexcept {
+using BindDcFunction=HRESULT(STDMETHODCALLTYPE*)(ID2D1DCRenderTarget*,const HDC,const RECT*);
+HRESULT STDMETHODCALLTYPE NativeBindDC(ID2D1DCRenderTarget* target,const HDC dc,const RECT* rect) noexcept {
+  const auto original=Original<BindDcFunction>(target,57);if(!original)return E_UNEXPECTED;
+  const HRESULT result=original(target,dc,rect);void** current=*reinterpret_cast<void***>(target);
+  AcquireSRWLockExclusive(&targetLock);
+  for(auto* table:nativeTables)if(table->storage.data()+1==current){table->boundDc=SUCCEEDED(result)?dc:nullptr;table->boundRect=rect?*rect:RECT{};break;}
+  ReleaseSRWLockExclusive(&targetLock);return result;
+}
+void AdaptTarget(ID2D1RenderTarget* target,bool dc) noexcept {
   const NativePatch patches[] = {{2, reinterpret_cast<void*>(&NativeRelease)}, {12, reinterpret_cast<void*>(&NativeCompatibleTarget)},
-      {27, reinterpret_cast<void*>(&NativeDrawText)}, {28, reinterpret_cast<void*>(&NativeDrawLayout)}};
-  AdaptNativeObject(target, 57, patches, sizeof(patches)/sizeof(patches[0]));
+      {27, reinterpret_cast<void*>(&NativeDrawText)}, {28, reinterpret_cast<void*>(&NativeDrawLayout)},
+      {48, reinterpret_cast<void*>(&NativeBeginDraw)}, {49, reinterpret_cast<void*>(&NativeEndDraw)}, {57,reinterpret_cast<void*>(&NativeBindDC)}};
+  AdaptNativeObject(target, dc?58:57, patches, dc?7:6);
 }
 using CreateWicTarget = HRESULT(STDMETHODCALLTYPE*)(ID2D1Factory*, IWICBitmap*, const D2D1_RENDER_TARGET_PROPERTIES*, ID2D1RenderTarget**);
 HRESULT STDMETHODCALLTYPE NativeWicTarget(ID2D1Factory* factory, IWICBitmap* bitmap,
@@ -289,8 +367,17 @@ using CreateDcTarget = HRESULT(STDMETHODCALLTYPE*)(ID2D1Factory*, const D2D1_REN
 HRESULT STDMETHODCALLTYPE NativeDcTarget(ID2D1Factory* factory, const D2D1_RENDER_TARGET_PROPERTIES* props,
     ID2D1DCRenderTarget** output) noexcept {
   const auto original = Original<CreateDcTarget>(factory, 16); if (!original) return E_UNEXPECTED;
-  const HRESULT result = original(factory, props, output);
-  if (SUCCEEDED(result) && output && *output) { InterlockedIncrement(&MasonTextDiagnostics.dcTargets); AdaptTarget(*output); } return result;
+  // Mason's small layered popup is read back into a GDI bitmap for presentation.
+  // A default hardware target pays for device/driver startup in every new host
+  // process, without avoiding that readback. Keep its pixel/DPI properties and
+  // draw this DC surface in software; explicit target types remain respected.
+  const bool software = props && output && props->type == D2D1_RENDER_TARGET_TYPE_DEFAULT;
+  D2D1_RENDER_TARGET_PROPERTIES popupProps{};
+  if (software) { popupProps = *props; popupProps.type = D2D1_RENDER_TARGET_TYPE_SOFTWARE; }
+  HRESULT result = original(factory, software ? &popupProps : props, output);
+  // Retain the original path on systems that reject the software properties.
+  if (software && FAILED(result)) result = original(factory, props, output);
+    if (SUCCEEDED(result) && output && *output) { InterlockedIncrement(&MasonTextDiagnostics.dcTargets); AdaptTarget(*output,true); } return result;
 }
 void AdaptFactory(ID2D1Factory* factory) noexcept {
   const NativePatch patches[] = {{2, reinterpret_cast<void*>(&NativeRelease)}, {13, reinterpret_cast<void*>(&NativeWicTarget)}, {14, reinterpret_cast<void*>(&NativeHwndTarget)},
@@ -302,6 +389,7 @@ void AdaptFactory(ID2D1Factory* factory) noexcept {
 extern "C" HRESULT WINAPI MasonDWriteCreateFactory(DWRITE_FACTORY_TYPE type, REFIID iid, IUnknown** output) noexcept {
   InterlockedIncrement(&MasonTextDiagnostics.dwriteFactories);
   if (!InitOnceExecuteOnce(&initialize, Initialize, nullptr, nullptr)) return E_FAIL;
+  MasonCandidateMotion::InstallFromCaller(_ReturnAddress());
   // A shared DirectWrite factory can already belong to the host application.
   // Mason receives an isolated native factory so only its own object is adapted.
   const auto nativeType = type == DWRITE_FACTORY_TYPE_SHARED ? DWRITE_FACTORY_TYPE_ISOLATED : type;
@@ -318,6 +406,7 @@ extern "C" HRESULT WINAPI MasonD2D1CreateFactory(D2D1_FACTORY_TYPE type, REFIID 
     const D2D1_FACTORY_OPTIONS* options, void** output) noexcept {
   InterlockedIncrement(&MasonTextDiagnostics.d2dFactories);
   if (!InitOnceExecuteOnce(&initialize, Initialize, nullptr, nullptr)) return E_FAIL;
+  MasonCandidateMotion::InstallFromCaller(_ReturnAddress());
   const HRESULT result = createD2D(type, iid, options, output);
   if (SUCCEEDED(result) && output && *output) {
     ID2D1Factory* factory = nullptr;
