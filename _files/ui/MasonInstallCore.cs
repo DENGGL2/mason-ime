@@ -56,7 +56,7 @@ namespace Mason.Install {
     bool LayoutReady(InstallPlan plan);
   }
   public static class InstallFiles {
-    public const string ProductVersion="2.4.7";
+    public const string ProductVersion="2.4.8";
     public const string EngineHash="cf509534a8f5f8af9c98ed7cbb8f135439f145a8cbe7e50ede42bb5b5ab45c29";
     public const string EngineUrl="https://github.com/rime/weasel/releases/download/0.17.4/weasel-0.17.4.0-installer.exe";
     public const string ReleaseApi="https://api.github.com/repos/gaboolic/rime-frost/releases/latest";

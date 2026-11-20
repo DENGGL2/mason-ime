@@ -34,8 +34,8 @@ using Mason.Common;
 [assembly: AssemblyTitle("麻绳输入法 · 设置")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法设置")]
-[assembly: AssemblyVersion("2.4.7.0")]
-[assembly: AssemblyFileVersion("2.4.7.0")]
+[assembly: AssemblyVersion("2.4.8.0")]
+[assembly: AssemblyFileVersion("2.4.8.0")]
 
 namespace Mason {
   // Data checked against FlClash v0.9.3 and its pinned prism_ui dependency.

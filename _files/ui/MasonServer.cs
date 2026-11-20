@@ -9,8 +9,8 @@ using Mason.Common;
 
 [assembly: AssemblyTitle("麻绳输入法 · 服务启动器")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.7.0")]
-[assembly: AssemblyFileVersion("2.4.7.0")]
+[assembly: AssemblyVersion("2.4.8.0")]
+[assembly: AssemblyFileVersion("2.4.8.0")]
 
 namespace Mason.Service {
   public static class Program {

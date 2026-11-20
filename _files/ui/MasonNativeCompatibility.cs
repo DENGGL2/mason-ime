@@ -7,8 +7,8 @@ using System.Web.Script.Serialization;
 
 [assembly: AssemblyTitle("麻绳输入法 · 中文目录兼容性")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.7.0")]
-[assembly: AssemblyFileVersion("2.4.7.0")]
+[assembly: AssemblyVersion("2.4.8.0")]
+[assembly: AssemblyFileVersion("2.4.8.0")]
 
 namespace Mason.NativeUi {
   public static class CompatibilityProgram {

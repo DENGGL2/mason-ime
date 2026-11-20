@@ -18,7 +18,7 @@
 
 ## 安装
 
-1. 从 [Releases](https://github.com/DENGGL2/mason-ime/releases/latest) 下载 `Mason-2.4.7-Windows.zip`，完整解压。
+1. 从 [Releases](https://github.com/DENGGL2/mason-ime/releases/latest) 下载 `Mason-2.4.8-Windows.zip`，完整解压。
 2. 运行文件夹内的 `Mason.Install.exe`，选择安装地址并开始安装。已有 Mason 会沿用原路径进行覆盖更新。
 3. 用 `Win + 空格` 切换输入法，从系统输入法右键菜单打开设置。
 

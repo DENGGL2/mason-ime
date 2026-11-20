@@ -10,8 +10,8 @@ using Mason.Common;
 
 [assembly: AssemblyTitle("麻绳输入法 · 输入配置")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.7.0")]
-[assembly: AssemblyFileVersion("2.4.7.0")]
+[assembly: AssemblyVersion("2.4.8.0")]
+[assembly: AssemblyFileVersion("2.4.8.0")]
 
 namespace Mason.InputSetup {
   public static class InputConfiguration {

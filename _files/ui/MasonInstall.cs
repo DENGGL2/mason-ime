@@ -28,8 +28,8 @@ using IOPath=System.IO.Path;
 [assembly: AssemblyTitle("麻绳输入法 · 安装")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法安装与更新")]
-[assembly: AssemblyVersion("2.4.7.0")]
-[assembly: AssemblyFileVersion("2.4.7.0")]
+[assembly: AssemblyVersion("2.4.8.0")]
+[assembly: AssemblyFileVersion("2.4.8.0")]
 
 namespace Mason.Install {
   // The same parameters used by Mason.Settings, checked against FlClash v0.9.3.
