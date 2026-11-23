@@ -26,7 +26,7 @@ public static class MasonReleaseScreenshots {
   static int Run(string[] args){
     Directory.CreateDirectory(args[1]);int exit=1;
     var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
-    var window=new SettingsWindow(new[]{"--backend",args[0]}) {WindowStartupLocation=WindowStartupLocation.Manual,Left=-16000,Top=-16000,Height=1160};
+    var window=new SettingsWindow(new[]{"--backend",args[0]}) {WindowStartupLocation=WindowStartupLocation.Manual,Left=-16000,Top=-16000,Height=1160,ShowInTaskbar=false,ShowActivated=false};
     window.Loaded+=async delegate{
       try{
         for(int attempt=0;attempt<80 && !(bool)Read(window,"ready");attempt++)await Task.Delay(50);

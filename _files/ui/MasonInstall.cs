@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -28,8 +28,8 @@ using IOPath=System.IO.Path;
 [assembly: AssemblyTitle("麻绳输入法 · 安装")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法安装与更新")]
-[assembly: AssemblyVersion("2.4.8.0")]
-[assembly: AssemblyFileVersion("2.4.8.0")]
+[assembly: AssemblyVersion("2.4.9.0")]
+[assembly: AssemblyFileVersion("2.4.9.0")]
 
 namespace Mason.Install {
   // The same parameters used by Mason.Settings, checked against FlClash v0.9.3.
@@ -105,6 +105,8 @@ namespace Mason.Install {
     public readonly List<InstallButton> Buttons=new List<InstallButton>();
     private readonly Dictionary<string,SolidColorBrush> brushes=new Dictionary<string,SolidColorBrush>();
     private readonly string[] args;
+    private bool updateMode;
+    private int callerPid;
     public InstallPlan Plan;
     private Grid shell,body,footer,contentFrame,overlay;
     private StackPanel themes,stepList;
@@ -124,16 +126,29 @@ namespace Mason.Install {
     public InstallerWindow(string[] arguments):this(arguments,null){}
     public InstallerWindow(string[] arguments,InstallPlan customPlan){
       args=arguments;Plan=customPlan??InstallationDetection.Detect(AppDomain.CurrentDomain.BaseDirectory);
+      updateMode=args.Contains("--update");if(updateMode){string target=null;for(int i=0;i<args.Length-1;i++){if(args[i]=="--target")target=args[i+1];if(args[i]=="--wait-pid" && !Int32.TryParse(args[i+1],out callerPid))throw new InvalidDataException("升级窗口进程参数无效。");}if(String.IsNullOrWhiteSpace(target) || !InstallFiles.Same(target,Plan.AppDir) || String.IsNullOrWhiteSpace(Plan.ExistingVersion))throw new InvalidDataException("没有识别到指定位置的 Mason 安装，不能自动覆盖。");Plan.ApplicationUpdate=true;Plan.UpdateDictionary=false;}
       for(int i=0;i<args.Length-1;i++)if(args[i]=="--capture")captureDir=IOPath.GetFullPath(args[i+1]);
+      if(updateMode)Plan.Mode=ExistingOutputMode(Plan);
       if(args.Contains("--update-dictionary"))Plan.UpdateDictionary=true;
       if(args.Contains("--traditional"))Plan.Mode="Hant";
       Title="麻绳输入法 · 安装";Width=620;Height=430;MinWidth=580;MinHeight=380;ResizeMode=ResizeMode.CanMinimize;WindowStartupLocation=WindowStartupLocation.CenterScreen;FontFamily=new FontFamily("Segoe UI, Microsoft YaHei UI");FontSize=14;UseLayoutRounding=true;if(args.Contains("--no-activate"))ShowActivated=false;
       TextOptions.SetTextRenderingMode(this,TextRenderingMode.Grayscale);TextOptions.SetTextFormattingMode(this,TextFormattingMode.Display);
       foreach(string key in new[]{"bg","surface","soft","text","muted","line","outline","primary","onPrimary","selected","error","transparent"})brushes[key]=new SolidColorBrush(Color(key));
-      BuildShell();BuildWelcome();SystemEvents.UserPreferenceChanged+=SystemThemeChanged;
+      if(updateMode)Title="麻绳输入法 · 更新";BuildShell();if(updateMode)BuildUpgradeWaiting();else BuildWelcome();SystemEvents.UserPreferenceChanged+=SystemThemeChanged;
       Closed+=delegate{SystemEvents.UserPreferenceChanged-=SystemThemeChanged;if(poll!=null)poll.Stop();if(worker!=null)worker.Dispose();};
-      Loaded+=delegate{SetNativeTheme();Capture("01-准备安装");if(args.Contains("--start"))Dispatcher.BeginInvoke(new Action(StartInstall));};
+      Loaded+=async delegate{SetNativeTheme();if(updateMode){await StartApplicationUpgrade();return;}Capture("01-准备安装");if(args.Contains("--start"))await Dispatcher.InvokeAsync(StartInstall);};
       Closing+=OnClosing;
+    }
+    private void BuildUpgradeWaiting(){ClearBody();view="upgrade-waiting";var column=Column();body.Children.Add(column);column.Children.Add(T("正在准备升级",26,"text",true));var detail=T("正在等待设置窗口关闭…",14,"muted",false);detail.Margin=new Thickness(0,14,0,0);column.Children.Add(detail);footer.Children.Clear();var actions=FooterActions();actions.Children.Add(Button("取消",88,"secondary",Close));}
+    private static string ExistingOutputMode(InstallPlan plan){
+      string user=String.IsNullOrWhiteSpace(plan.PreviousUserDir)?plan.UserDir:plan.PreviousUserDir;
+      string custom=IOPath.Combine(user,"rime_frost.custom.yaml");if(File.Exists(custom)){var choice=System.Text.RegularExpressions.Regex.Match(File.ReadAllText(custom,Encoding.UTF8),@"(?m)^\s*switches/@1/reset:\s*([01])");if(choice.Success)return choice.Groups[1].Value=="1"?"Hant":"Hans";}
+      string compiled=IOPath.Combine(user,"build","rime_frost.schema.yaml");if(File.Exists(compiled)){var group=System.Text.RegularExpressions.Regex.Match(File.ReadAllText(compiled,Encoding.UTF8),@"(?m)^  - name: traditionalization\s*\r?\n((?:    .*\r?\n)*)");if(group.Success){var choice=System.Text.RegularExpressions.Regex.Match(group.Groups[1].Value,@"(?m)^    reset:\s*([01])");if(choice.Success)return choice.Groups[1].Value=="1"?"Hant":"Hans";}}
+      return plan.Mode;
+    }
+    private async Task StartApplicationUpgrade(){
+      try{if(callerPid>0){await Task.Run(delegate{Process caller=null;try{caller=Process.GetProcessById(callerPid);}catch(ArgumentException){return;}using(caller){if(caller.HasExited)return;string expected=MasonPaths.RuntimeFile(Plan.AppDir,"ui","Mason.Settings.exe");try{if(!InstallFiles.Same(caller.MainModule.FileName,expected))throw new InvalidDataException("升级发起窗口与当前安装不匹配。");}catch(Win32Exception){if(caller.HasExited)return;throw;}if(!caller.WaitForExit(15000))throw new InvalidOperationException("请先关闭旧设置窗口，再重试升级。");}});}if(IsVisible)StartInstall();}
+      catch(Exception error){ShowResult(new InstallResult {Message=error.Message,AppDir=Plan.AppDir,UserDir=Plan.UserDir});}
     }
     public Color Color(string name){bool isDark=theme=="dark" || (theme=="system" && dark);var values=isDark?new Dictionary<string,string>{{"bg","#171717"},{"surface","#242424"},{"soft","#2D2D2D"},{"text","#EFEFEF"},{"muted","#BDBDBD"},{"line","#424242"},{"outline","#A8A8A8"},{"primary","#E6E6E6"},{"onPrimary","#171717"},{"selected","#454545"},{"error","#FFB4AB"},{"transparent","#00000000"}}:new Dictionary<string,string>{{"bg","#F9F9F9"},{"surface","#F3F3F3"},{"soft","#EFEFEF"},{"text","#202020"},{"muted","#555555"},{"line","#E0E0E0"},{"outline","#5C5C5C"},{"primary","#202020"},{"onPrimary","#FFFFFF"},{"selected","#D5D5D5"},{"error","#B3261E"},{"transparent","#00000000"}};return (Color)ColorConverter.ConvertFromString(values[name]);}
     private static bool ReadSystemDark(){try{using(var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))return key!=null && Convert.ToInt32(key.GetValue("AppsUseLightTheme",1))==0;}catch{return false;}}

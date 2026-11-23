@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -17,7 +17,7 @@ using Mason.Common;
 namespace Mason.Install {
   public sealed class InstallPlan {
     public string SourceDir, AppDir, EngineDir, UserDir, PreviousEngineDir, PreviousUserDir, LogDir, BackupRoot, UserSid, Mode="Hans", ExistingVersion="", RunDir;
-    public bool LayoutMigrated;
+    public bool LayoutMigrated, ApplicationUpdate;
     public bool UpdateDictionary, InstallCloud, ExistingComplete, EngineRegistered;
     public InstallPlan(){UpdateDictionary=true;InstallCloud=true;}
   }
@@ -56,7 +56,7 @@ namespace Mason.Install {
     bool LayoutReady(InstallPlan plan);
   }
   public static class InstallFiles {
-    public const string ProductVersion="2.4.8";
+    public const string ProductVersion="2.4.9";
     public const string EngineHash="cf509534a8f5f8af9c98ed7cbb8f135439f145a8cbe7e50ede42bb5b5ab45c29";
     public const string EngineUrl="https://github.com/rime/weasel/releases/download/0.17.4/weasel-0.17.4.0-installer.exe";
     public const string ReleaseApi="https://api.github.com/repos/gaboolic/rime-frost/releases/latest";
@@ -355,6 +355,7 @@ namespace Mason.Install {
       foreach(string custom in new[]{"default.custom.yaml","rime_frost.custom.yaml"}) {string path=System.IO.Path.Combine(OriginalUserDir,custom);if(File.Exists(path))MergePatch(File.ReadAllText(path,Encoding.UTF8),new Dictionary<string,string>());}
       string user=System.IO.Path.Combine(OriginalUserDir,"user.yaml");if(File.Exists(user))SelectSchema(File.ReadAllText(user,Encoding.UTF8));
       Directory.CreateDirectory(plan.RunDir);backupDir=System.IO.Path.Combine(MasonPaths.Backups(plan.AppDir),DateTime.Now.ToString("yyyyMMdd-HHmmss")+"-"+Guid.NewGuid().ToString("N").Substring(0,6));
+      try{string scope=@"Local\Mason.UpdateWatcher."+plan.UserSid;using(var stop=EventWaitHandle.OpenExisting(scope+".Stop")){stop.Set();using(var stopped=EventWaitHandle.OpenExisting(scope+".Stopped")){if(!stopped.WaitOne(5000))throw new InvalidOperationException("更新检查尚未退出，请稍后重试安装。");}}}catch(WaitHandleCannotBeOpenedException){}
       foreach(var process in Process.GetProcessesByName("Mason.Settings"))using(process){try{if(InstallFiles.Same(process.MainModule.FileName,MasonPaths.RuntimeFile(plan.AppDir,"ui","Mason.Settings.exe")))throw new InvalidOperationException("请先关闭麻绳设置窗口，再重试安装。");}catch(System.ComponentModel.Win32Exception){}}
       // Engine setup can create or change user configuration before the payload is applied.
       // Save these specific files first, then restore preferences after setup stops its service.
@@ -368,6 +369,7 @@ namespace Mason.Install {
       foreach(var file in manifest.Files){string source=InstallFiles.Source(plan.SourceDir,file.Path),relativeTarget=TargetRelative(file.Path),target=InstallFiles.Child(plan.AppDir,relativeTarget);if(!File.Exists(source))continue;
         if(!InstallFiles.Same(source,target) && (!File.Exists(target) || InstallFiles.Hash(target)!=file.Sha256))result.Add(new CopyItem {Source=source,Target=target,Group="程序",Relative=relativeTarget,Bytes=file.Bytes});
         if(!file.Path.StartsWith("_files/rime/",StringComparison.Ordinal))continue;string relative=file.Path.Substring("_files/rime/".Length);target=InstallFiles.Child(plan.UserDir,relative);
+        if(plan.ApplicationUpdate && File.Exists(target) && relative!="rime.lua" && !relative.StartsWith("lua/",StringComparison.Ordinal))continue;
         if(File.Exists(target) && (relative=="custom_phrase.txt" || relative.EndsWith(".custom.yaml",StringComparison.OrdinalIgnoreCase) || (plan.ExistingComplete && InstallFiles.DictionaryFile(relative))))continue;
         if(dictionaryReady && dictionaryHashes.ContainsKey(relative))continue;
         if(!File.Exists(target) || InstallFiles.Hash(target)!=file.Sha256)result.Add(new CopyItem {Source=source,Target=target,Group="词库",Relative=relative,Bytes=file.Bytes});
@@ -399,6 +401,7 @@ namespace Mason.Install {
     private void WriteFiles(){
       var items=Items();totalCopy=items.Sum(x=>x.Bytes);copied=0;Directory.CreateDirectory(plan.AppDir);Directory.CreateDirectory(plan.UserDir);
       foreach(var item in items){CopyAtomic(item.Source,item.Target,delegate(long delta){copied+=delta;Emit("正在写入文件",item.Group=="词库"?"写入麻绳词库":"安装程序文件",totalCopy>0?100.0*copied/totalCopy:100,copied,totalCopy,0,false);});if(InstallFiles.Hash(item.Source)!=InstallFiles.Hash(item.Target))throw new IOException("写入文件校验失败："+item.Relative);}
+      if(plan.ApplicationUpdate && plan.ExistingComplete){if(!File.Exists(InstallFiles.Child(plan.UserDir,"rime_frost.dict.yaml")) || !File.Exists(InstallFiles.Child(plan.UserDir,"rime.lua")))throw new InvalidDataException("现有词库配置不完整，请重新下载安装包。");return;}
       var paths=new Dictionary<string,string>{{"schema_list",SchemaList(plan.UserDir) }};string custom=InstallFiles.Child(plan.UserDir,"default.custom.yaml");InstallFiles.AtomicText(custom,MergePatch(Read(custom),paths));
       custom=InstallFiles.Child(plan.UserDir,"rime_frost.custom.yaml");InstallFiles.AtomicText(custom,MergePatch(Read(custom),new Dictionary<string,string>{{"switches/@1/reset",plan.Mode=="Hant"?"1":"0"}}));
       custom=InstallFiles.Child(plan.UserDir,"user.yaml");InstallFiles.AtomicText(custom,SelectSchema(Read(custom)));

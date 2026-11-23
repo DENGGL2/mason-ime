@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -34,8 +34,8 @@ using Mason.Common;
 [assembly: AssemblyTitle("麻绳输入法 · 设置")]
 [assembly: AssemblyProduct("Mason")]
 [assembly: AssemblyDescription("麻绳输入法设置")]
-[assembly: AssemblyVersion("2.4.8.0")]
-[assembly: AssemblyFileVersion("2.4.8.0")]
+[assembly: AssemblyVersion("2.4.9.0")]
+[assembly: AssemblyFileVersion("2.4.9.0")]
 
 namespace Mason {
   // Data checked against FlClash v0.9.3 and its pinned prism_ui dependency.
@@ -250,9 +250,13 @@ namespace Mason {
       return "python.exe";
     }
     public Task<Dictionary<string,object>> Run(string action,object payload,Action<string> progress) {
+      return RunEvents(action,payload,progress==null?null:(Action<Dictionary<string,object>>)(item=>progress(item.ContainsKey("message")?Convert.ToString(item["message"]):"")),CancellationToken.None);
+    }
+    public Task<Dictionary<string,object>> RunEvents(string action,object payload,Action<Dictionary<string,object>> progress,CancellationToken cancellation) {
       return Task.Run(delegate {
         var info=new ProcessStartInfo(python,Quote(script)+" "+action) {UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8,StandardErrorEncoding=Encoding.UTF8};
         using(var process=Process.Start(info)) {
+          using(var registration=cancellation.Register(delegate{try{if(!process.HasExited)process.Kill();}catch(InvalidOperationException){}catch(System.ComponentModel.Win32Exception){}})){
           var errors=process.StandardError.ReadToEndAsync();
           string request=json.Serialize(payload??new object());
           request=System.Text.RegularExpressions.Regex.Replace(request,@"[^\x00-\x7F]",match=>@"\u"+((int)match.Value[0]).ToString("x4"));
@@ -260,12 +264,14 @@ namespace Mason {
           Dictionary<string,object> result=null;string line;
           while((line=process.StandardOutput.ReadLine())!=null){
             var item=json.Deserialize<Dictionary<string,object>>(line);
-            if(Convert.ToString(item["type"])=="progress"){if(progress!=null)progress(Convert.ToString(item["message"]));}
+            if(Convert.ToString(item["type"])=="progress"){if(progress!=null)progress(item);}
             else result=item;
           }
           process.WaitForExit();string error=errors.Result;
+          cancellation.ThrowIfCancellationRequested();
           if(result==null)throw new InvalidOperationException(String.IsNullOrWhiteSpace(error)?"未能读取设置，请确认 Python 3 已安装。":error);
           return result;
+          }
         }
       });
     }
@@ -322,6 +328,10 @@ namespace Mason {
     private Border fadeTop,fadeBottom;
     private TextBlock title,status,updateLabel;
     private SettingsButton saveButton,resetButton,updateButton,checkUpdatesButton,systemButton,lightButton,darkButton;
+    private readonly Dictionary<string,Ellipse> updateBadges=new Dictionary<string,Ellipse>();
+    private UpdateFlags updateFlags=new UpdateFlags();
+    private System.Windows.Threading.DispatcherTimer updatePoll;
+    private CancellationTokenSource updateCancellation;
     private Grid footerRegion;
     private Dictionary<string,SettingsButton> nav=new Dictionary<string,SettingsButton>();
     private List<SettingsButton> modes=new List<SettingsButton>();
@@ -354,7 +364,7 @@ namespace Mason {
       TextOptions.SetTextFormattingMode(this,TextFormattingMode.Display);
       InitBrushes();BuildShell();
       SystemEvents.UserPreferenceChanged+=SystemPreferenceChanged;
-      Closed+=delegate{SystemEvents.UserPreferenceChanged-=SystemPreferenceChanged;};
+      Closed+=delegate{SystemEvents.UserPreferenceChanged-=SystemPreferenceChanged;if(updatePoll!=null)updatePoll.Stop();};
       Loaded+=async delegate {await Initialize();};
       Closing+=delegate(object sender,CancelEventArgs e){if(Busy){e.Cancel=true;SetStatus("操作仍在进行，完成后可以关闭窗口。");}};
       PreviewKeyDown+=async delegate(object sender,KeyEventArgs e){
@@ -379,6 +389,14 @@ namespace Mason {
     public TextBlock Text(string value,double size,string color) {return new TextBlock {Text=value,FontSize=size,Foreground=BrushOf(color),VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap};}
     public TextBlock Glyph(string key,double size,Brush color,Thickness margin){return new TextBlock {Text=icons[key],FontFamily=new FontFamily("Segoe MDL2 Assets"),FontSize=size,Foreground=color,Margin=margin,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Center};}
     private SettingsButton Btn(string text,Action action,double width,string kind,string icon,bool selected,double height){return new SettingsButton(this,text,action,width,kind,icon,selected,height);}
+    private Ellipse UpdateDot(string id){var dot=new Ellipse {Width=9,Height=9,Fill=new SolidColorBrush(Color.FromRgb(0xDD,0x78,0x82)),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,IsHitTestVisible=false,Visibility=Visibility.Collapsed};AutomationProperties.SetName(dot,"有可用更新");updateBadges[id]=dot;return dot;}
+    private Grid BadgeButton(SettingsButton button,string id){var grid=new Grid {Width=button.Width,Height=button.Height,HorizontalAlignment=button.HorizontalAlignment,Margin=button.Margin};button.Margin=new Thickness(0);grid.Children.Add(button);var dot=UpdateDot(id);dot.Margin=new Thickness(0,1,3,0);grid.Children.Add(dot);return grid;}
+    private void RefreshUpdateIndicators(){
+      updateFlags=UpdateIndicators.Load(rimeDir,Convert.ToString(ReadProjectInfo()["version"]));
+      foreach(var item in updateBadges){bool available=item.Key=="nav-guide" || item.Key=="check-updates"?updateFlags.Application:updateFlags.Dictionary;item.Value.Visibility=available?Visibility.Visible:Visibility.Collapsed;}
+      if(updateLabel!=null && !Busy)updateLabel.Text=updateFlags.Dictionary?"发现新版词库 "+updateFlags.DictionaryVersion+" · 可以更新":updateStatus;
+    }
+    private void LocateUpdateButton(string target){Navigate(target);Dispatcher.BeginInvoke(new Action(delegate{scroll.ScrollToBottom();var button=target=="guide"?checkUpdatesButton:updateButton;if(button!=null)button.Focus();}),System.Windows.Threading.DispatcherPriority.Loaded);}
     private void BuildShell() {
       root=new Grid {Background=BrushOf("bg")};Content=root;
       frame=new Grid();root.Children.Add(frame);frame.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(80)});frame.ColumnDefinitions.Add(new ColumnDefinition());
@@ -388,7 +406,7 @@ namespace Mason {
         string id=data[0];var container=new StackPanel {Margin=new Thickness(4,2,4,2)};
         var button=Btn(null,delegate{Navigate(id);},72,"nav",null,page==id,66);button.Padding=new Thickness(0);
         var contents=new StackPanel();var iconBox=new Border {Width=56,Height=32,CornerRadius=new CornerRadius(16),Margin=new Thickness(0,3,0,4),Background=page==id?BrushOf("selected"):Brushes.Transparent};
-        iconBox.Child=new NavigationIcon(id,new SolidColorBrush(Color.FromRgb(0x66,0x66,0x66)));contents.Children.Add(iconBox);contents.Children.Add(Text(data[1],12,"text"));
+        var iconGrid=new Grid();iconGrid.Children.Add(new NavigationIcon(id,new SolidColorBrush(Color.FromRgb(0x66,0x66,0x66))));if(id=="guide" || id=="maintenance"){var dot=UpdateDot("nav-"+id);dot.Margin=new Thickness(0,0,3,0);iconGrid.Children.Add(dot);}iconBox.Child=iconGrid;contents.Children.Add(iconBox);contents.Children.Add(Text(data[1],12,"text"));
         ((TextBlock)contents.Children[1]).TextAlignment=TextAlignment.Center;
         button.Content=contents;container.Children.Add(button);navigation.Children.Add(container);nav[id]=button;
       }
@@ -593,7 +611,7 @@ namespace Mason {
       Section("词库",6);
       var location=Card("词库");var content=(StackPanel)location.Child;content.Children.Clear();
       updateLabel=Text(updateStatus,14,"muted");updateLabel.Margin=new Thickness(0,0,0,14);content.Children.Add(updateLabel);
-      updateButton=Btn("更新词库",async delegate{await UpdateDictionary();},142,"primary",null,false,44);updateButton.HorizontalAlignment=HorizontalAlignment.Left;updateButton.IsEnabled=!Busy;updateButton.Margin=new Thickness(0,0,0,20);content.Children.Add(updateButton);
+      updateButton=Btn("更新词库",async delegate{await UpdateDictionary();},142,"primary",null,false,44);updateButton.HorizontalAlignment=HorizontalAlignment.Left;updateButton.IsEnabled=!Busy;updateButton.Margin=new Thickness(0,0,0,20);content.Children.Add(BadgeButton(updateButton,"dictionary-button"));RefreshUpdateIndicators();
       content.Children.Add(new Border {Height=1,Background=BrushOf("line"),Margin=new Thickness(0,0,0,16)});
       content.Children.Add(Text("词库位置",14,"text"));var path=Text(rimeDir,12,"muted");path.Margin=new Thickness(0,8,0,16);content.Children.Add(path);
       var folders=new WrapPanel();content.Children.Add(folders);var open=Btn("用户数据",delegate{OpenFolder(rimeDir);},146,"secondary",null,false,44);open.Margin=new Thickness(0,0,12,0);folders.Children.Add(open);folders.Children.Add(Btn("迁移词库",async delegate{await Migrate();},120,"secondary",null,false,44));
@@ -610,18 +628,43 @@ namespace Mason {
       content.Children.Add(Text("鸣谢",14,"text"));var projects=product["thanks"] as object[];string names=projects==null?"Rime / 小狼毫、librime、librime-lua、白霜拼音、雾凇拼音、librime-cloud、OpenCC、FlClash":String.Join("、",projects.Select(Convert.ToString));
       var thanks=Text(names,13,"muted");thanks.Margin=new Thickness(0,6,0,12);content.Children.Add(thanks);
       var licenses=Text("第三方组件保留各自的开源协议和版权说明。",12,"muted");licenses.Margin=new Thickness(0,0,0,18);content.Children.Add(licenses);
-      checkUpdatesButton=Btn("检查更新",async delegate{await CheckUpdates();},136,"primary",null,false,44);checkUpdatesButton.HorizontalAlignment=HorizontalAlignment.Right;checkUpdatesButton.IsEnabled=!Busy;content.Children.Add(checkUpdatesButton);
+      checkUpdatesButton=Btn("检查更新",async delegate{await CheckUpdates();},136,"primary",null,false,44);checkUpdatesButton.HorizontalAlignment=HorizontalAlignment.Right;checkUpdatesButton.IsEnabled=!Busy;content.Children.Add(BadgeButton(checkUpdatesButton,"check-updates"));RefreshUpdateIndicators();
     }
     private Dictionary<string,object> ReadProjectInfo(){
       string file=IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory,"project-info.json");
       return json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file,Encoding.UTF8));
     }
     private async Task CheckUpdates(){
-      if(Busy)return;Busy=true;if(checkUpdatesButton!=null)checkUpdatesButton.IsEnabled=false;string message;
-      try{var result=await backend.Run("check_update",null,null);message=Convert.ToString(result["message"]);}
-      catch(Exception error){message=error.Message;}
+      if(Busy || modalResult!=null)return;Busy=true;if(checkUpdatesButton!=null)checkUpdatesButton.IsEnabled=false;Dictionary<string,object> data=null;string failure=null;
+      try{var result=await backend.Run("check_update",null,null);if(!Convert.ToBoolean(result["ok"]))throw new InvalidOperationException(Convert.ToString(result["message"]));data=(Dictionary<string,object>)result["data"];RefreshUpdateIndicators();}
+      catch(Exception error){failure=error.Message;}
       finally{Busy=false;if(checkUpdatesButton!=null)checkUpdatesButton.IsEnabled=true;}
-      await Info("检查更新",message);
+      if(failure!=null){await Info("检查更新未完成",failure);return;}
+      if(!Convert.ToBoolean(data["has_update"])){await Info("检查更新",Convert.ToString(data["message"]));return;}
+      var body=new StackPanel();body.Children.Add(Text(Convert.ToString(data["message"]),14,"text"));var hint=Text("下载完成后自动打开升级窗口，沿用当前安装位置。",13,"muted");hint.Margin=new Thickness(0,12,0,0);body.Children.Add(hint);
+      if(await ShowModal("发现新版本",body,true,null,"立即更新","primary",112))await UpdateApplication(Convert.ToString(data["latest_version"]));
+    }
+    private static string FormatBytes(double bytes){if(bytes<1024)return bytes.ToString("0")+" B";if(bytes<1048576)return (bytes/1024).ToString("0.0")+" KB";return (bytes/1048576).ToString("0.0")+" MB";}
+    private async Task UpdateApplication(string version){
+      if(Busy)return;bool retry=true;
+      while(retry){retry=false;Busy=true;updateCancellation=new CancellationTokenSource();var body=new StackPanel();var phase=Text("正在下载 Mason "+version,14,"text");body.Children.Add(phase);
+        var track=new Border {Height=8,CornerRadius=new CornerRadius(4),Background=BrushOf("track"),Margin=new Thickness(0,18,0,10),ClipToBounds=true};var fill=new Border {Height=8,CornerRadius=new CornerRadius(4),Background=BrushOf("primary"),HorizontalAlignment=HorizontalAlignment.Left,Width=0};track.Child=fill;body.Children.Add(track);
+        var amount=Text("0%",13,"muted");body.Children.Add(amount);var speed=Text("正在连接…",12,"muted");speed.Margin=new Thickness(0,8,0,0);body.Children.Add(speed);
+        var modal=ShowModal("正在更新",body,true,null,null,"primary",0);
+        Dictionary<string,object> prepared=null;string failure=null;
+        try{var result=await backend.RunEvents("download_update",new Dictionary<string,object>{{"version",version}},delegate(Dictionary<string,object> item){Dispatcher.BeginInvoke(new Action(delegate{
+            if(updateCancellation==null || updateCancellation.IsCancellationRequested || modalResult==null)return;phase.Text=Convert.ToString(item["message"]);double received=item.ContainsKey("received")?Convert.ToDouble(item["received"]):0,total=item.ContainsKey("total")?Convert.ToDouble(item["total"]):0;
+            double percent=item.ContainsKey("percent") && item["percent"]!=null?Convert.ToDouble(item["percent"]):0;fill.Width=Math.Max(0,track.ActualWidth*Math.Min(1,percent/100));amount.Text=percent.ToString("0")+"%  ·  "+FormatBytes(received)+(total>0?" / "+FormatBytes(total):"");
+            double rate=item.ContainsKey("bytes_per_second")?Convert.ToDouble(item["bytes_per_second"]):0;speed.Text=Convert.ToString(item["phase"])=="download"?FormatBytes(rate)+"/s":"正在准备覆盖升级…";
+          }));},updateCancellation.Token);if(!Convert.ToBoolean(result["ok"]))throw new InvalidOperationException(Convert.ToString(result["message"]));prepared=(Dictionary<string,object>)result["data"];
+        }catch(OperationCanceledException){}catch(Exception error){failure=error.Message;}
+        bool canceled=updateCancellation.IsCancellationRequested;updateCancellation.Dispose();updateCancellation=null;Busy=false;
+        if(modalResult!=null)await Dismiss(!canceled && failure==null);await modal;SetStatus("");
+        if(canceled)return;
+        if(failure!=null){retry=await ShowModal("更新未完成",Text(failure,14,"text"),true,null,"重试","primary",88);continue;}
+        string launchFailure=null;try{Busy=true;var launched=await backend.Run("launch_update",new Dictionary<string,object>{{"prepared_path",prepared["prepared_path"]},{"settings_pid",Process.GetCurrentProcess().Id}},null);if(!Convert.ToBoolean(launched["ok"]))throw new InvalidOperationException(Convert.ToString(launched["message"]));Busy=false;Close();}
+        catch(Exception error){Busy=false;launchFailure=error.Message;}if(launchFailure!=null)await Info("无法开始升级",launchFailure);return;
+      }
     }
     private void GuideRow(StackPanel content,string code,string meaning){var row=new DockPanel {Margin=new Thickness(0,0,0,20)};var key=Text(code,14,"text");key.Width=154;row.Children.Add(key);row.Children.Add(Text(meaning,14,"muted"));content.Children.Add(row);}
     private void GuideLinkRow(StackPanel content,string heading,string address){
@@ -638,6 +681,8 @@ namespace Mason {
       if(!ready)return;if(WindowState==WindowState.Minimized)WindowState=WindowState.Normal;Show();Activate();
       if(command=="update" && !Busy){Navigate("maintenance");await UpdateDictionary();}
       if(command=="check_updates" && !Busy){Navigate("guide");await CheckUpdates();}
+      if(command=="guide_updates")LocateUpdateButton("guide");
+      if(command=="dictionary_updates")LocateUpdateButton("maintenance");
     }
     private void SetOrientation(bool value){if(Busy)return;cfg["horizontal"]=value;for(int i=0;i<modes.Count;i++)modes[i].SetSelected(value==(i==1),Motion.SegmentMs,Motion.OutCubic);Changed();DrawPreview();}
     private void SelectPalette(int i){if(Busy)return;string target="mini_"+palettes[i]+"_"+(IsDark?"dark":"light");if(EffectiveScheme()==target)return;cfg["scheme"]=target;animatePaletteCheck=true;double offset=scroll.VerticalOffset;Changed();BuildPage();Dispatcher.BeginInvoke(new Action(delegate{scroll.ScrollToVerticalOffset(offset);}));}
@@ -652,8 +697,10 @@ namespace Mason {
       catch(Exception error){failure=error.Message;SetStatus("设置读取未完成");}
       if(failure!=null){if(qaFolder!=null){WriteQaError(failure);Close();return;}await Info("提示",failure);}
       if(qaFolder!=null){await QualityCapture();return;}
+      RefreshUpdateIndicators();updatePoll=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromSeconds(3)};updatePoll.Tick+=delegate{RefreshUpdateIndicators();};updatePoll.Start();
       if(arguments.Contains("--update-dictionary")){Navigate("maintenance");await UpdateDictionary();}
       if(arguments.Contains("--check-updates")){Navigate("guide");await CheckUpdates();}
+      if(arguments.Contains("--update-notification")){bool dictionary=arguments.Any(value=>String.Equals(value,"mason-ime://dictionary/",StringComparison.OrdinalIgnoreCase) || String.Equals(value,"mason-ime://dictionary",StringComparison.OrdinalIgnoreCase));LocateUpdateButton(dictionary?"maintenance":"guide");}
     }
     private void LoadData(Dictionary<string,object> data,bool loadCfg){appDir=data.ContainsKey("app_dir")?Convert.ToString(data["app_dir"]):"";programDir=data.ContainsKey("program_dir")?Convert.ToString(data["program_dir"]):Convert.ToString(data["weasel_dir"]);logDir=data.ContainsKey("log_dir")?Convert.ToString(data["log_dir"]):"";backupDir=data.ContainsKey("backup_dir")?Convert.ToString(data["backup_dir"]):"";rimeDir=Convert.ToString(data["rime_dir"]);weaselDir=Convert.ToString(data["weasel_dir"]);updateStatus=Convert.ToString(data["update_status"]);if(loadCfg)cfg=(Dictionary<string,object>)data["cfg"];ApplyTheme(false);BuildPage();}
     private bool Installed(){return !String.IsNullOrEmpty(weaselDir) && Directory.Exists(rimeDir);}
@@ -704,7 +751,7 @@ namespace Mason {
     }
     public Task<bool> Info(string heading,string message){return ShowModal(heading,Text(message,14,"text"),false,null);}
     private Task<bool> Confirm(string heading,string message){return ShowModal(heading,Text(message,14,"text"),true,null);}
-    private Task<bool> ShowModal(string heading,UIElement body,bool cancelable,Func<bool> validate){
+    private Task<bool> ShowModal(string heading,UIElement body,bool cancelable,Func<bool> validate,string confirmText="确定",string confirmKind="text",double confirmWidth=64){
       if(modalResult!=null)return modalResult.Task;
       focusBeforeModal=qaFolder==null?Keyboard.FocusedElement:null;
       modalResult=new TaskCompletionSource<bool>();overlay.Children.Clear();overlay.Visibility=Visibility.Visible;
@@ -713,13 +760,14 @@ namespace Mason {
       var content=new StackPanel();modalCard.Child=content;var label=Text(heading,22,"text");label.Margin=new Thickness(0,0,0,16);content.Children.Add(label);content.Children.Add(body);
       var actions=new StackPanel {Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,20,0,0)};content.Children.Add(actions);
       if(cancelable){var cancel=Btn("取消",async delegate{await Dismiss(false);},64,"text",null,false,40);cancel.Background=Brushes.Transparent;actions.Children.Add(cancel);}
-      var confirm=Btn("确定",async delegate{if(validate!=null && !validate()){SetStatus("请输入6位十六进制颜色值。");return;}await Dismiss(true);},64,"text",null,false,40);confirm.Background=Brushes.Transparent;actions.Children.Add(confirm);
+      SettingsButton confirm=null;if(confirmText!=null){confirm=Btn(confirmText,async delegate{if(validate!=null && !validate()){SetStatus("请输入6位十六进制颜色值。");return;}await Dismiss(true);},confirmWidth,confirmKind,null,false,40);if(confirmKind=="text")confirm.Background=Brushes.Transparent;actions.Children.Add(confirm);}
       modalScale=new ScaleTransform(1.2,1.2);modalCard.RenderTransform=modalScale;frame.Effect=blur;
       veil.BeginAnimation(OpacityProperty,Motion.Number(0,1,Motion.DialogMs,Motion.Alert));modalCard.BeginAnimation(OpacityProperty,Motion.Number(0,1,Motion.DialogMs,Motion.Alert));
       modalScale.BeginAnimation(ScaleTransform.ScaleXProperty,Motion.Number(1.2,1,Motion.DialogMs,Motion.Alert));modalScale.BeginAnimation(ScaleTransform.ScaleYProperty,Motion.Number(1.2,1,Motion.DialogMs,Motion.Alert));
-      blur.BeginAnimation(BlurEffect.RadiusProperty,Motion.Number(0,6,Motion.DialogMs,Motion.Alert));if(qaFolder==null)confirm.Focus();return modalResult.Task;
+      blur.BeginAnimation(BlurEffect.RadiusProperty,Motion.Number(0,6,Motion.DialogMs,Motion.Alert));if(qaFolder==null && confirm!=null)confirm.Focus();return modalResult.Task;
     }
     public async Task Dismiss(bool result){if(modalResult==null || modalClosing)return;modalClosing=true;var task=modalResult;
+      if(!result && updateCancellation!=null)updateCancellation.Cancel();
       double sx=modalScale.ScaleX,sy=modalScale.ScaleY;modalScale.BeginAnimation(ScaleTransform.ScaleXProperty,null);modalScale.BeginAnimation(ScaleTransform.ScaleYProperty,null);modalScale.ScaleX=sx;modalScale.ScaleY=sy;
       modalCard.BeginAnimation(OpacityProperty,Motion.Number(modalCard.Opacity,0,Motion.DialogMs,Motion.Alert));var veil=overlay.Children[0] as Border;veil.BeginAnimation(OpacityProperty,Motion.Number(veil.Opacity,0,Motion.DialogMs,Motion.Alert));blur.BeginAnimation(BlurEffect.RadiusProperty,Motion.Number(blur.Radius,0,Motion.DialogMs,Motion.Alert));
       if(Motion.Enabled)await Task.Delay(Motion.DialogMs);overlay.Visibility=Visibility.Collapsed;overlay.Children.Clear();PruneButtons();frame.Effect=null;modalResult=null;modalClosing=false;
@@ -752,8 +800,10 @@ namespace Mason {
       MessageBox.Show(error.Message,"麻绳输入法 · 设置");return false;
     }
     [STAThread] public static void Main(string[] args){try{
+      if(args.Contains("--stop-background-updates")){UpdateWatcher.Stop();return;}
+      if(args.Contains("--background-updates")){string engine="";for(int i=0;i<args.Length-1;i++)if(args[i]=="--engine")engine=args[i+1];UpdateWatcher.Run(IOPath.GetFullPath(IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","scripts","settings_backend.py")),engine);return;}
       using(var instance=args.Contains("--qa")?null:new SettingsInstance()){
-      if(instance!=null && !instance.TryOwn()){instance.Send(args.Contains("--update-dictionary")?"update":args.Contains("--check-updates")?"check_updates":"activate");return;}
+      if(instance!=null && !instance.TryOwn()){bool dictionary=args.Any(value=>value.Equals("mason-ime://dictionary",StringComparison.OrdinalIgnoreCase) || value.Equals("mason-ime://dictionary/",StringComparison.OrdinalIgnoreCase));instance.Send(args.Contains("--update-notification")?(dictionary?"dictionary_updates":"guide_updates"):args.Contains("--update-dictionary")?"update":args.Contains("--check-updates")?"check_updates":"activate");return;}
       var app=new Application();app.DispatcherUnhandledException+=delegate(object sender,DispatcherUnhandledExceptionEventArgs e){bool qa=ReportError(args,e.Exception);e.Handled=true;if(qa)app.Shutdown(1);};
       var window=new SettingsWindow(args);if(instance!=null)instance.Listen(command=>window.Dispatcher.BeginInvoke(new Action(delegate{window.ReceiveLaunch(command);})));
       app.Run(window);}

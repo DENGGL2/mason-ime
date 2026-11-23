@@ -2,6 +2,7 @@
 #include <shellapi.h>
 #include <cstddef>
 #include <cstring>
+#include "MasonUpdateIndicators.h"
 
 // Numeric counters only, for validating the native save/deploy notification path.
 struct MasonNotificationDiagnosticData {
@@ -32,11 +33,11 @@ inline BOOL WINAPI Notify(DWORD message, PNOTIFYICONDATAW data) noexcept {
       if (message == NIM_MODIFY && !quiet.uFlags) return TRUE;
       // Preserve icon, callback, tooltip and GUID updates carried by the call.
       InterlockedIncrement(&MasonNotificationDiagnostics.forwarded);
-      return originalNotify(message, &quiet);
+      return MasonUpdateIndicators::Forward(message, &quiet, originalNotify);
     }
   }
   InterlockedIncrement(&MasonNotificationDiagnostics.forwarded);
-  return originalNotify(message, data);
+  return MasonUpdateIndicators::Forward(message, data, originalNotify);
 }
 
 inline void Install() noexcept {

@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -10,7 +11,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import time
 import zipfile
+import github_updates
 
 RELEASE_URL = "https://api.github.com/repos/gaboolic/rime-frost/releases/latest"
 ASSET_NAME = "rime-frost-schemas.zip"
@@ -62,31 +65,34 @@ def _request(url):
 
 
 def latest_release():
-    try:
-        with urllib.request.urlopen(_request(RELEASE_URL), timeout=30) as response:
-            data = json.loads(response.read(2 * 1024 * 1024).decode("utf-8"))
-    except (urllib.error.URLError, ValueError, TimeoutError, OSError) as error:
-        raise RuntimeError("无法检查最新词库，请检查网络后重试。") from error
-    asset = next((item for item in data.get("assets", []) if item.get("name") == ASSET_NAME), None)
-    if not asset:
-        raise RuntimeError("最新发布中没有找到完整词库包，当前词库保持原状。")
-    url = asset.get("browser_download_url", "")
-    parts = urllib.parse.urlsplit(url)
-    if parts.scheme != "https" or parts.hostname != "github.com" or not parts.path.startswith("/gaboolic/rime-frost/releases/download/"):
-        raise RuntimeError("词库下载地址不符合预期，已停止更新。")
-    if asset.get("size", 0) > MAX_DOWNLOAD_BYTES:
+    release = github_updates.latest_release("https://github.com/gaboolic/rime-frost", lambda version: ASSET_NAME)
+    if release["size"] < 0 or release["size"] > MAX_DOWNLOAD_BYTES:
         raise RuntimeError("词库包超出预期大小，已停止更新。")
-    return dict(id=data["id"], tag=data.get("tag_name", "最新发布"), asset_id=asset["id"],
-                url=url, digest=asset.get("digest"), size=asset.get("size", 0))
+    return release
 
 
 def download_release(release, destination, progress):
+    for attempt in range(3):
+        partial = destination.with_name(destination.name + '.part-' + str(attempt + 1))
+        try:
+            _download_once(release, partial, progress)
+            os.replace(partial, destination)
+            return
+        except github_updates.NetworkError as error:
+            if attempt == 2:
+                raise RuntimeError('词库下载未完成，已重试。请稍后重试。\n' + str(error)) from error
+            progress('词库下载中断，正在重试… ' + str(attempt + 2) + '/3')
+            time.sleep(.5 * (attempt + 1))
+
+
+def _download_once(release, destination, progress):
     size = release.get("size", 0)
     downloaded = 0
     last_percent = -1
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(_request(release["url"]), timeout=45) as response, destination.open("xb") as output:
+        with github_updates.open_retry(github_updates.request(release["url"], binary=True), timeout=30,
+                                       progress=progress) as response, destination.open("xb") as output:
             while True:
                 chunk = response.read(256 * 1024)
                 if not chunk:
@@ -100,10 +106,10 @@ def download_release(release, destination, progress):
                 if percent != last_percent:
                     progress(f"正在下载最新词库… {percent}%" if size else f"正在下载最新词库… {percent} MB")
                     last_percent = percent
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
-        raise RuntimeError("词库下载未完成，请检查网络后重试。") from error
+    except (github_updates.NetworkError, urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
+        raise github_updates.NetworkError("词库下载未完成。\n" + str(error)) from error
     if size and downloaded != size:
-        raise RuntimeError("词库包下载不完整，当前词库保持原状。")
+        raise github_updates.NetworkError("词库包下载不完整。")
     expected = release.get("digest") or ""
     if expected.startswith("sha256:") and digest.hexdigest() != expected.removeprefix("sha256:"):
         raise RuntimeError("词库包校验失败，当前词库保持原状。")

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -9,8 +9,8 @@ using Mason.Common;
 
 [assembly: AssemblyTitle("麻绳输入法 · 服务启动器")]
 [assembly: AssemblyProduct("Mason")]
-[assembly: AssemblyVersion("2.4.8.0")]
-[assembly: AssemblyFileVersion("2.4.8.0")]
+[assembly: AssemblyVersion("2.4.9.0")]
+[assembly: AssemblyFileVersion("2.4.9.0")]
 
 namespace Mason.Service {
   public static class Program {
@@ -31,11 +31,15 @@ namespace Mason.Service {
       string engine=AppDomain.CurrentDomain.BaseDirectory;
       var config=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(engine,"mason-runtime.json"),Encoding.UTF8));
       string tray=MasonPaths.RuntimeFile(Convert.ToString(config["app_dir"]),"ui","Mason.Tray.exe");
+      string settings=MasonPaths.RuntimeFile(Convert.ToString(config["app_dir"]),"ui","Mason.Settings.exe");
+      bool quitting=args.Length==1 && String.Equals(args[0],"/quit",StringComparison.OrdinalIgnoreCase);
+      if(quitting && File.Exists(settings)){using(var control=Process.Start(new ProcessStartInfo(settings,"--stop-background-updates"){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden})){control.WaitForExit(3000);}}
       if(args.Length==1 && String.Equals(args[0],"/quit",StringComparison.OrdinalIgnoreCase) && File.Exists(tray)){
         using(var control=Process.Start(new ProcessStartInfo(tray,"--stop "+Quote(engine)){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden})){control.WaitForExit(3000);}
       }
       var native=Process.Start(StartInfo(engine,args));
       if(args.Length==1 && String.Equals(args[0],"/quit",StringComparison.OrdinalIgnoreCase)){using(native){return native.WaitForExit(15000)?native.ExitCode:1;}}
+      if(File.Exists(settings))Process.Start(new ProcessStartInfo(settings,"--background-updates --engine "+Quote(engine)){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden});
       return 0;
     }catch{return 1;}}
   }

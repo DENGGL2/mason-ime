@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $taskFramework 'csc.exe'))) { $taskF
 $taskWpf = Join-Path $taskFramework 'WPF'
 $taskArgs = @('/nologo','/target:winexe','/optimize+','/codepage:65001',('/out:' + $OutputPath),('/win32manifest:' + $ManifestPath),'/r:System.dll','/r:System.Core.dll','/r:System.Xaml.dll','/r:System.Web.Extensions.dll','/r:System.Windows.Forms.dll','/r:System.Xml.dll')
 foreach ($taskName in @('PresentationFramework.dll','PresentationCore.dll','WindowsBase.dll')) { $taskArgs += '/r:' + (Join-Path $taskWpf $taskName) }
-$taskArgs += @($SourcePath,(Join-Path (Split-Path $SourcePath -Parent) 'MasonPaths.cs'),(Join-Path (Split-Path $SourcePath -Parent) 'MasonNavigationIcons.cs'),(Join-Path (Split-Path $SourcePath -Parent) 'MasonColorMemory.cs'))
+$taskArgs += @($SourcePath,(Join-Path (Split-Path $SourcePath -Parent) 'MasonPaths.cs'),(Join-Path (Split-Path $SourcePath -Parent) 'MasonNavigationIcons.cs'),(Join-Path (Split-Path $SourcePath -Parent) 'MasonColorMemory.cs'),(Join-Path (Split-Path $SourcePath -Parent) 'MasonUpdates.cs'))
 $taskIcon=Join-Path (Split-Path $SourcePath -Parent) 'Mason.ico'
 if(Test-Path -LiteralPath $taskIcon){$taskArgs += '/win32icon:'+$taskIcon}
 & (Join-Path $taskFramework 'csc.exe') @taskArgs

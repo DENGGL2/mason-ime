@@ -35,6 +35,7 @@ ui_names = {
 }
 script_names = {
     "settings_backend.py", "settings_core.py", "mason_paths.py", "fuzzy_settings.py", "correction_settings.py", "dictionary_updater.py",
+    "github_updates.py", "application_updater.py", "update_state.py", "windows_notifications.py", "mason_notify.ps1",
     "_migrate_layout.ps1", "_settings_entry.ps1", "_menu_protocol.ps1", "_apply_ui.ps1", "_tray_menu.ps1",
     "_native_ui.ps1", "_brand_windows.ps1", "_refresh_taskbar.ps1"
 }

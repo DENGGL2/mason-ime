@@ -8,6 +8,7 @@
 #include "MasonCorrectionText.h"
 #include "MasonCandidateMotion.h"
 #include "MasonServerNotifications.h"
+#include "MasonLangBarUpdates.h"
 
 // Numeric diagnostics only: no input text or personal data is recorded.
 struct MasonTextDiagnosticData {
@@ -19,6 +20,9 @@ struct MasonTextDiagnosticData {
   volatile LONG drawTexts, drawMarkedTexts;
 };
 extern "C" { MasonTextDiagnosticData MasonTextDiagnostics = {sizeof(MasonTextDiagnosticData)}; }
+#ifdef MASON_UPDATE_PROOF
+extern "C" __declspec(dllexport) void MasonProofSetUpdateRoot(const wchar_t* value){MasonUpdateIndicators::SetTestRoot(value?value:L"");}
+#endif
 
 // Only the factories imported by Mason are wrapped. Shared system COM vtables
 // are never changed. A marker belongs to its layout object, so releasing or
@@ -47,7 +51,7 @@ BOOL CALLBACK Initialize(PINIT_ONCE, PVOID, PVOID*) {
   HMODULE own = nullptr;
   if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
       reinterpret_cast<LPCWSTR>(&Initialize), &own))return FALSE;
-  MasonCandidateMotion::Install();MasonServerNotifications::Install();return TRUE;
+  MasonCandidateMotion::Install();MasonServerNotifications::Install();MasonUpdateIndicators::Install();return TRUE;
 }
 
 // Direct2D resources accept render targets in other resource methods. Keep the
@@ -390,6 +394,7 @@ extern "C" HRESULT WINAPI MasonDWriteCreateFactory(DWRITE_FACTORY_TYPE type, REF
   InterlockedIncrement(&MasonTextDiagnostics.dwriteFactories);
   if (!InitOnceExecuteOnce(&initialize, Initialize, nullptr, nullptr)) return E_FAIL;
   MasonCandidateMotion::InstallFromCaller(_ReturnAddress());
+  MasonLangBarUpdates::InstallOnThread();
   // A shared DirectWrite factory can already belong to the host application.
   // Mason receives an isolated native factory so only its own object is adapted.
   const auto nativeType = type == DWRITE_FACTORY_TYPE_SHARED ? DWRITE_FACTORY_TYPE_ISOLATED : type;
@@ -407,6 +412,7 @@ extern "C" HRESULT WINAPI MasonD2D1CreateFactory(D2D1_FACTORY_TYPE type, REFIID 
   InterlockedIncrement(&MasonTextDiagnostics.d2dFactories);
   if (!InitOnceExecuteOnce(&initialize, Initialize, nullptr, nullptr)) return E_FAIL;
   MasonCandidateMotion::InstallFromCaller(_ReturnAddress());
+  MasonLangBarUpdates::InstallOnThread();
   const HRESULT result = createD2D(type, iid, options, output);
   if (SUCCEEDED(result) && output && *output) {
     ID2D1Factory* factory = nullptr;
